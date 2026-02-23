@@ -2,7 +2,7 @@
 using System.Runtime.InteropServices;
 using System.Text;
 
-namespace CarbonFences.Win32
+namespace CarbonZones.Win32
 {
     public class DesktopUtil
     {

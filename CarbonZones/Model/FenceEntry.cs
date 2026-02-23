@@ -3,10 +3,10 @@ using System.Threading.Tasks;
 using System.Diagnostics;
 using System;
 using System.IO;
-using CarbonFences.Win32;
-using CarbonFences.Util;
+using CarbonZones.Win32;
+using CarbonZones.Util;
 
-namespace CarbonFences.Model
+namespace CarbonZones.Model
 {
     public class FenceEntry
     {

@@ -1,6 +1,6 @@
 ﻿using System.Drawing;
 
-namespace CarbonFences.Util
+namespace CarbonZones.Util
 {
     public static class Extensions
     {

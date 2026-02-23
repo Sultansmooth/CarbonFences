@@ -5,7 +5,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows.Forms;
 
-namespace CarbonFences.Win32
+namespace CarbonZones.Win32
 {
     public class DesktopClickHook : IDisposable
     {

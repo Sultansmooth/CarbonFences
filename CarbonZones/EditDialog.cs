@@ -8,7 +8,7 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 
-namespace CarbonFences
+namespace CarbonZones
 {
     public partial class EditDialog : Form
     {

@@ -2,7 +2,7 @@
 using System.Drawing;
 using System.Runtime.InteropServices;
 
-namespace CarbonFences.Win32
+namespace CarbonZones.Win32
 {
     // From https://stackoverflow.com/a/59129804/7702748
 

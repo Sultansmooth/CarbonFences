@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Runtime.InteropServices;
 
-namespace CarbonFences.Win32
+namespace CarbonZones.Win32
 {
     public class WindowUtil
     {

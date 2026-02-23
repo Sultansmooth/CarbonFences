@@ -1,15 +1,16 @@
-﻿using CarbonFences.Model;
-using CarbonFences.Util;
-using CarbonFences.Win32;
+﻿using CarbonZones.Model;
+using CarbonZones.Util;
+using CarbonZones.Win32;
 using Peter;
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
-using static CarbonFences.Win32.WindowUtil;
+using static CarbonZones.Win32.WindowUtil;
 
-namespace CarbonFences
+namespace CarbonZones
 {
     public partial class FenceWindow : Form
     {
@@ -46,6 +47,22 @@ namespace CarbonFences
         private Point dragStartPoint;
         private string dragOutItem;
 
+        // Tab state
+        private int activeTabIndex = 0;
+        private int hoveringTabIndex = -1;
+        private int dragOverTabIndex = -1;
+        private const int tabBarHeight = 24;
+        private int scaledTabBarHeight;
+        private const int tabPadding = 6;
+        private const int tabSpacing = 1;
+        private const int addButtonWidth = 24;
+        private Font tabFont;
+        private ContextMenuStrip tabContextMenu;
+        private int contextMenuTabIndex = -1;
+
+        private int headerHeight => titleHeight + scaledTabBarHeight;
+        private List<string> ActiveFiles => fenceInfo.Tabs[activeTabIndex].Files;
+
         private readonly ThrottledExecution throttledMove = new ThrottledExecution(TimeSpan.FromSeconds(4));
         private readonly ThrottledExecution throttledResize = new ThrottledExecution(TimeSpan.FromSeconds(4));
 
@@ -70,6 +87,13 @@ namespace CarbonFences
             WindowUtil.HideFromAltTab(Handle);
             logicalTitleHeight = (fenceInfo.TitleHeight < 16 || fenceInfo.TitleHeight > 100) ? 35 : fenceInfo.TitleHeight;
             titleHeight = LogicalToDeviceUnits(logicalTitleHeight);
+            scaledTabBarHeight = LogicalToDeviceUnits(tabBarHeight);
+            tabFont = new Font(new FontFamily("Segoe UI"), 8);
+
+            // Tab context menu
+            tabContextMenu = new ContextMenuStrip();
+            tabContextMenu.Items.Add("Rename Tab", null, TabRename_Click);
+            tabContextMenu.Items.Add("Delete Tab", null, TabDelete_Click);
 
             this.MouseWheel += FenceWindow_MouseWheel;
             this.MouseDown += FenceWindow_MouseDown;
@@ -81,6 +105,18 @@ namespace CarbonFences
             AllowDrop = true;
 
             this.fenceInfo = fenceInfo;
+
+            // Migrate old fences: move Files into a default tab
+            if (fenceInfo.Tabs.Count == 0 && fenceInfo.Files.Count > 0)
+            {
+                fenceInfo.Tabs.Add(new Model.FenceTab("Main", new System.Collections.Generic.List<string>(fenceInfo.Files)));
+                fenceInfo.Files.Clear();
+            }
+            if (fenceInfo.Tabs.Count == 0)
+            {
+                fenceInfo.Tabs.Add(new Model.FenceTab("Main"));
+            }
+
             Text = fenceInfo.Name;
             Location = new Point(fenceInfo.PosX, fenceInfo.PosY);
 
@@ -141,6 +177,19 @@ namespace CarbonFences
                 var pt = new Point(
                     (short)(m.LParam.ToInt64() & 0xFFFF),
                     (short)(m.LParam.ToInt64() >> 16 & 0xFFFF));
+
+                // Right-click on tab bar
+                if (pt.Y >= titleHeight && pt.Y < headerHeight)
+                {
+                    int tabIdx = GetTabIndexAtPoint(pt);
+                    if (tabIdx >= 0)
+                    {
+                        contextMenuTabIndex = tabIdx;
+                        tabContextMenu.Show(this, pt);
+                    }
+                    return;
+                }
+
                 Invalidate(); // update hover state
                 if (hoveringItem != null && !ModifierKeys.HasFlag(Keys.Shift))
                     shellContextMenu.ShowContextMenu(new[] { new FileInfo(hoveringItem) }, PointToScreen(pt));
@@ -206,7 +255,7 @@ namespace CarbonFences
         private void deleteItemToolStripMenuItem_Click(object sender, EventArgs e)
         {
             ShowDesktopIcon(hoveringItem);
-            fenceInfo.Files.Remove(hoveringItem);
+            ActiveFiles.Remove(hoveringItem);
             hoveringItem = null;
             Save();
             Refresh();
@@ -223,17 +272,60 @@ namespace CarbonFences
                 e.Effect = DragDropEffects.Move;
         }
 
+        private void FenceWindow_DragOver(object sender, DragEventArgs e)
+        {
+            var pt = PointToClient(new Point(e.X, e.Y));
+            int newDragOverTab = -1;
+            if (pt.Y >= titleHeight && pt.Y < headerHeight)
+                newDragOverTab = GetTabIndexAtPoint(pt);
+            if (newDragOverTab != dragOverTabIndex)
+            {
+                dragOverTabIndex = newDragOverTab;
+                Invalidate();
+            }
+        }
+
+        private void FenceWindow_DragLeave(object sender, EventArgs e)
+        {
+            dragOverTabIndex = -1;
+            Invalidate();
+        }
+
         private void FenceWindow_DragDrop(object sender, DragEventArgs e)
         {
             var dropped = (string[])e.Data.GetData(DataFormats.FileDrop);
+            var clientPt = PointToClient(new Point(e.X, e.Y));
+            int targetTab = -1;
+            if (clientPt.Y >= titleHeight && clientPt.Y < headerHeight)
+                targetTab = GetTabIndexAtPoint(clientPt);
+
+            var targetFiles = (targetTab >= 0) ? fenceInfo.Tabs[targetTab].Files : ActiveFiles;
+
             foreach (var file in dropped)
             {
-                if (!fenceInfo.Files.Contains(file) && ItemExists(file))
+                // Check if item is already in another tab (intra-fence move)
+                Model.FenceTab sourceTab = null;
+                foreach (var t in fenceInfo.Tabs)
                 {
-                    fenceInfo.Files.Add(file);
+                    if (t.Files.Contains(file))
+                    {
+                        sourceTab = t;
+                        break;
+                    }
+                }
+
+                if (sourceTab != null && targetTab >= 0 && sourceTab != fenceInfo.Tabs[targetTab])
+                {
+                    sourceTab.Files.Remove(file);
+                    fenceInfo.Tabs[targetTab].Files.Add(file);
+                }
+                else if (sourceTab == null && ItemExists(file))
+                {
+                    targetFiles.Add(file);
                     HideDesktopIcon(file);
                 }
             }
+            dragOverTabIndex = -1;
             Save();
             Refresh();
         }
@@ -277,7 +369,7 @@ namespace CarbonFences
                     if (!ClientRectangle.Contains(mousePos))
                     {
                         ShowDesktopIcon(itemPath);
-                        fenceInfo.Files.Remove(itemPath);
+                        ActiveFiles.Remove(itemPath);
                         Save();
                     }
                     Refresh();
@@ -333,7 +425,7 @@ namespace CarbonFences
             {
                 isMinified = true;
                 prevHeight = Height;
-                Height = titleHeight;
+                Height = headerHeight;
                 Refresh();
             }
         }
@@ -352,6 +444,27 @@ namespace CarbonFences
 
         private void FenceWindow_Click(object sender, EventArgs e)
         {
+            var mousePos = PointToClient(MousePosition);
+
+            // Check if click is in tab bar area
+            if (mousePos.Y >= titleHeight && mousePos.Y < headerHeight)
+            {
+                int clickedTab = GetTabIndexAtPoint(mousePos);
+                if (clickedTab >= 0)
+                {
+                    activeTabIndex = clickedTab;
+                    scrollOffset = 0;
+                    Refresh();
+                    return;
+                }
+                if (IsAddButtonAtPoint(mousePos))
+                {
+                    AddNewTab();
+                    return;
+                }
+                return;
+            }
+
             shouldUpdateSelection = true;
             Refresh();
         }
@@ -391,18 +504,85 @@ namespace CarbonFences
             using (var titleFormat = new StringFormat { Alignment = StringAlignment.Center })
                 g.DrawString(Text, titleFont, titleBrush, new PointF(Width / 2, titleOffset), titleFormat);
 
+            // Tab bar
+            int tabBgAlpha = (int)(10 + 40 * hoverAlpha);
+            using (var tabBgBrush = new SolidBrush(Color.FromArgb(tabBgAlpha, Color.Black)))
+                g.FillRectangle(tabBgBrush, new Rectangle(0, titleHeight, Width, scaledTabBarHeight));
+
+            int tabX = 4;
+            var tabMousePos = PointToClient(MousePosition);
+            hoveringTabIndex = -1;
+
+            for (int i = 0; i < fenceInfo.Tabs.Count; i++)
+            {
+                var tab = fenceInfo.Tabs[i];
+                var tabTextSize = g.MeasureString(tab.Name, tabFont);
+                int tabWidth = (int)tabTextSize.Width + tabPadding * 2;
+
+                if (tabX + tabWidth > Width - addButtonWidth - 4)
+                    break; // clip tabs that don't fit
+
+                var tabRect = new Rectangle(tabX, titleHeight, tabWidth, scaledTabBarHeight);
+                bool isActive = (i == activeTabIndex);
+                bool isTabHover = tabRect.Contains(tabMousePos);
+                bool isDragTarget = (i == dragOverTabIndex);
+
+                if (isTabHover)
+                    hoveringTabIndex = i;
+
+                if (isDragTarget)
+                {
+                    using var dragBrush = new SolidBrush(Color.FromArgb(60, 100, 200, 255));
+                    g.FillRectangle(dragBrush, tabRect);
+                }
+                else if (isActive)
+                {
+                    int activeAlpha = (int)(30 + 80 * hoverAlpha);
+                    using var activeBrush = new SolidBrush(Color.FromArgb(activeAlpha, 100, 160, 230));
+                    g.FillRectangle(activeBrush, tabRect);
+                }
+                else if (isTabHover)
+                {
+                    int hoverTabAlpha = (int)(20 + 50 * hoverAlpha);
+                    using var hoverBrush = new SolidBrush(Color.FromArgb(hoverTabAlpha, 80, 130, 200));
+                    g.FillRectangle(hoverBrush, tabRect);
+                }
+
+                if (isActive)
+                {
+                    using var indicatorPen = new Pen(Color.FromArgb((int)(120 + 135 * hoverAlpha), 100, 170, 255), 2);
+                    g.DrawLine(indicatorPen, tabX, titleHeight + scaledTabBarHeight - 1,
+                               tabX + tabWidth, titleHeight + scaledTabBarHeight - 1);
+                }
+
+                int tabTextAlpha = isActive ? (int)(100 + 155 * hoverAlpha) : (int)(50 + 150 * hoverAlpha);
+                using (var tabTextBrush = new SolidBrush(Color.FromArgb(tabTextAlpha, 255, 255, 255)))
+                using (var tabFormat = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center })
+                    g.DrawString(tab.Name, tabFont, tabTextBrush, tabRect, tabFormat);
+
+                tabX += tabWidth + tabSpacing;
+            }
+
+            // "+" add tab button
+            var addRect = new Rectangle(tabX, titleHeight, addButtonWidth, scaledTabBarHeight);
+            bool addHover = addRect.Contains(tabMousePos);
+            int addAlpha = addHover ? (int)(60 + 100 * hoverAlpha) : (int)(40 + 80 * hoverAlpha);
+            using (var addBrush = new SolidBrush(Color.FromArgb(addAlpha, 255, 255, 255)))
+            using (var addFormat = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center })
+                g.DrawString("+", tabFont, addBrush, addRect, addFormat);
+
             // Items
             var x = itemPadding;
             var y = itemPadding;
             scrollHeight = 0;
-            g.Clip = new Region(new Rectangle(0, titleHeight, Width, Height - titleHeight));
-            foreach (var file in fenceInfo.Files)
+            g.Clip = new Region(new Rectangle(0, headerHeight, Width, Height - headerHeight));
+            foreach (var file in ActiveFiles)
             {
                 var entry = FenceEntry.FromPath(file);
                 if (entry == null)
                     continue;
 
-                RenderEntry(g, entry, x, y + titleHeight - scrollOffset);
+                RenderEntry(g, entry, x, y + headerHeight - scrollOffset);
 
                 var itemBottom = y + itemHeight;
                 if (itemBottom > scrollHeight)
@@ -416,15 +596,15 @@ namespace CarbonFences
                 }
             }
 
-            scrollHeight -= (ClientRectangle.Height - titleHeight);
+            scrollHeight -= (ClientRectangle.Height - headerHeight);
 
             // Scroll bars
             if (scrollHeight > 0)
             {
-                var contentHeight = Height - titleHeight;
+                var contentHeight = Height - headerHeight;
                 var scrollbarHeight = contentHeight - scrollHeight;
                 using (var scrollBrush = new SolidBrush(Color.FromArgb(150, Color.Black)))
-                    g.FillRectangle(scrollBrush, new Rectangle(Width - 5, titleHeight + scrollOffset, 5, scrollbarHeight));
+                    g.FillRectangle(scrollBrush, new Rectangle(Width - 5, headerHeight + scrollOffset, 5, scrollbarHeight));
 
                 scrollOffset = Math.Min(scrollOffset, scrollHeight);
             }
@@ -530,6 +710,75 @@ namespace CarbonFences
             // App stays alive via tray icon even with no fences open
         }
 
+        private int GetTabIndexAtPoint(Point pt)
+        {
+            int tabX = 4;
+            using var g = CreateGraphics();
+            for (int i = 0; i < fenceInfo.Tabs.Count; i++)
+            {
+                var tabTextSize = g.MeasureString(fenceInfo.Tabs[i].Name, tabFont);
+                int tabWidth = (int)tabTextSize.Width + tabPadding * 2;
+                if (tabX + tabWidth > Width - addButtonWidth - 4)
+                    return -1;
+                var tabRect = new Rectangle(tabX, titleHeight, tabWidth, scaledTabBarHeight);
+                if (tabRect.Contains(pt))
+                    return i;
+                tabX += tabWidth + tabSpacing;
+            }
+            return -1;
+        }
+
+        private bool IsAddButtonAtPoint(Point pt)
+        {
+            int tabX = 4;
+            using var g = CreateGraphics();
+            for (int i = 0; i < fenceInfo.Tabs.Count; i++)
+            {
+                var tabTextSize = g.MeasureString(fenceInfo.Tabs[i].Name, tabFont);
+                tabX += (int)tabTextSize.Width + tabPadding * 2 + tabSpacing;
+            }
+            var addRect = new Rectangle(tabX, titleHeight, addButtonWidth, scaledTabBarHeight);
+            return addRect.Contains(pt);
+        }
+
+        private void AddNewTab()
+        {
+            var dialog = new EditDialog("New Tab");
+            dialog.TopMost = true;
+            if (dialog.ShowDialog(this) == DialogResult.OK)
+            {
+                fenceInfo.Tabs.Add(new Model.FenceTab(dialog.NewName));
+                activeTabIndex = fenceInfo.Tabs.Count - 1;
+                scrollOffset = 0;
+                Save();
+                Refresh();
+            }
+        }
+
+        private void TabRename_Click(object sender, EventArgs e)
+        {
+            var tab = fenceInfo.Tabs[contextMenuTabIndex];
+            var dialog = new EditDialog(tab.Name);
+            dialog.TopMost = true;
+            if (dialog.ShowDialog(this) == DialogResult.OK)
+            {
+                tab.Name = dialog.NewName;
+                Save();
+                Refresh();
+            }
+        }
+
+        private void TabDelete_Click(object sender, EventArgs e)
+        {
+            if (fenceInfo.Tabs.Count <= 1)
+                return;
+            fenceInfo.Tabs.RemoveAt(contextMenuTabIndex);
+            if (activeTabIndex >= fenceInfo.Tabs.Count)
+                activeTabIndex = fenceInfo.Tabs.Count - 1;
+            Save();
+            Refresh();
+        }
+
         private readonly object saveLock = new object();
         private void Save()
         {
@@ -572,7 +821,7 @@ namespace CarbonFences
                 Minify();
                 if (isMinified)
                 {
-                    Height = titleHeight;
+                    Height = headerHeight;
                 }
                 Refresh();
                 Save();

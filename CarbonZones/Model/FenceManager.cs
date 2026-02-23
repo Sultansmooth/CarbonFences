@@ -3,9 +3,9 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
 using System.Xml.Serialization;
-using CarbonFences.Win32;
+using CarbonZones.Win32;
 
-namespace CarbonFences.Model
+namespace CarbonZones.Model
 {
     public class FenceManager
     {
@@ -19,7 +19,7 @@ namespace CarbonFences.Model
 
         public FenceManager()
         {
-            basePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CarbonFences");
+            basePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CarbonZones");
             EnsureDirectoryExists(basePath);
         }
 

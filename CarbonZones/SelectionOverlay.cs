@@ -1,7 +1,7 @@
 using System.Drawing;
 using System.Windows.Forms;
 
-namespace CarbonFences
+namespace CarbonZones
 {
     public class SelectionOverlay : Form
     {

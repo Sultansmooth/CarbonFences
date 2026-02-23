@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Threading.Tasks;
 
-namespace CarbonFences.Util
+namespace CarbonZones.Util
 {
     public class ThrottledExecution
     {

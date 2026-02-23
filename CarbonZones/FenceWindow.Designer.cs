@@ -1,4 +1,4 @@
-﻿namespace CarbonFences
+﻿namespace CarbonZones
 {
     partial class FenceWindow
     {
@@ -125,6 +125,8 @@
             this.Click += new System.EventHandler(this.FenceWindow_Click);
             this.DragDrop += new System.Windows.Forms.DragEventHandler(this.FenceWindow_DragDrop);
             this.DragEnter += new System.Windows.Forms.DragEventHandler(this.FenceWindow_DragEnter);
+            this.DragOver += new System.Windows.Forms.DragEventHandler(this.FenceWindow_DragOver);
+            this.DragLeave += new System.EventHandler(this.FenceWindow_DragLeave);
             this.Paint += new System.Windows.Forms.PaintEventHandler(this.FenceWindow_Paint);
             this.DoubleClick += new System.EventHandler(this.FenceWindow_DoubleClick);
             this.MouseClick += new System.Windows.Forms.MouseEventHandler(this.FenceWindow_MouseClick);

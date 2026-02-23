@@ -6,7 +6,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace CarbonFences.Util
+namespace CarbonZones.Util
 {
     public class ThumbnailProvider
     {

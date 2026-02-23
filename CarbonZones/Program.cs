@@ -1,11 +1,12 @@
-using CarbonFences.Model;
+using CarbonZones.Model;
 using System;
 using System.Drawing;
+using System.IO;
 using System.Threading;
 using System.Windows.Forms;
-using CarbonFences.Win32;
+using CarbonZones.Win32;
 
-namespace CarbonFences
+namespace CarbonZones
 {
     static class Program
     {
@@ -14,7 +15,7 @@ namespace CarbonFences
         {
             WindowUtil.SetPreferredAppMode(1);
 
-            using (var mutex = new Mutex(true, "Carbon_Fences", out var createdNew))
+            using (var mutex = new Mutex(true, "Carbon_Zones", out var createdNew))
             {
                 if (createdNew)
                 {
@@ -43,10 +44,11 @@ namespace CarbonFences
                     trayMenu.Items.Add(new ToolStripSeparator());
                     trayMenu.Items.Add("Exit", null, (s, e) => Application.Exit());
 
+                    var appIcon = LoadAppIcon();
                     using var trayIcon = new NotifyIcon
                     {
-                        Icon = SystemIcons.Application,
-                        Text = "Carbon Fences",
+                        Icon = appIcon ?? SystemIcons.Application,
+                        Text = "Carbon Zones",
                         Visible = true,
                         ContextMenuStrip = trayMenu
                     };
@@ -55,6 +57,14 @@ namespace CarbonFences
                     Application.Run();
                 }
             }
+        }
+        private static Icon LoadAppIcon()
+        {
+            var exeDir = Path.GetDirectoryName(Application.ExecutablePath);
+            var iconPath = Path.Combine(exeDir, "icon.ico");
+            if (File.Exists(iconPath))
+                return new Icon(iconPath);
+            return null;
         }
     }
 }

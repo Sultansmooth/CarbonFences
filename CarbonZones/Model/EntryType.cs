@@ -1,4 +1,4 @@
-﻿namespace CarbonFences.Model
+﻿namespace CarbonZones.Model
 {
     public enum EntryType
     {

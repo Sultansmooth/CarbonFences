@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 
-namespace CarbonFences.Model
+namespace CarbonZones.Model
 {
     public class FenceInfo
     {
@@ -37,6 +37,8 @@ namespace CarbonFences.Model
         public int TitleHeight { get; set; } = 35;
 
         public List<string> Files { get; set; } = new List<string>();
+
+        public List<FenceTab> Tabs { get; set; } = new List<FenceTab>();
 
         public FenceInfo()
         {
