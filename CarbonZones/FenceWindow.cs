@@ -840,8 +840,10 @@ namespace CarbonZones
                 g.FillRectangle(fillBrush, outlineRect);
             }
 
-            var iconRect = new Rectangle(x + itemWidth / 2 - iconDrawSize / 2, y, iconDrawSize, iconDrawSize);
-            g.DrawIcon(icon, iconRect);
+            int iconX = x + itemWidth / 2 - iconDrawSize / 2;
+            using (var bmp = icon.ToBitmap())
+            using (var scaled = new Bitmap(bmp, iconDrawSize, iconDrawSize))
+                g.DrawImage(scaled, iconX, y);
             using (var shadowBrush = new SolidBrush(Color.FromArgb(180, 15, 15, 15)))
                 g.DrawString(name, iconFont, shadowBrush, new RectangleF(textPosition.Move(shadowDist, shadowDist), textMaxSize), stringFormat);
             g.DrawString(name, iconFont, Brushes.White, new RectangleF(textPosition, textMaxSize), stringFormat);
