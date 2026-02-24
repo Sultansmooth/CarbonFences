@@ -43,7 +43,13 @@ namespace CarbonZones
                     trayMenu.Items.Add("Show/Hide Fences", null, (s, e) => FenceManager.Instance.ToggleFences());
                     trayMenu.Items.Add("New Fence", null, (s, e) => FenceManager.Instance.CreateFence("New fence"));
                     trayMenu.Items.Add(new ToolStripSeparator());
-                    trayMenu.Items.Add("Exit", null, (s, e) => Application.Exit());
+                    trayMenu.Items.Add("Exit", null, (s, e) =>
+                    {
+                        // Only unstage files on explicit user exit, not on
+                        // installer kill/update which would cause duplicates.
+                        FenceManager.Instance.UnhideAllDesktopIcons();
+                        Application.Exit();
+                    });
 
                     var appIcon = LoadAppIcon();
                     using var trayIcon = new NotifyIcon
@@ -54,8 +60,6 @@ namespace CarbonZones
                         ContextMenuStrip = trayMenu
                     };
                     trayIcon.DoubleClick += (s, e) => FenceManager.Instance.ToggleFences();
-
-                    Application.ApplicationExit += (s, e) => FenceManager.Instance.UnhideAllDesktopIcons();
 
                     Application.Run();
                 }

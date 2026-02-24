@@ -1,6 +1,6 @@
 [Setup]
 AppName=Carbon Zones
-AppVersion=1.0.5
+AppVersion=1.0.6
 AppPublisher=Sultansmooth
 AppPublisherURL=https://github.com/Sultansmooth/CarbonFences
 DefaultDirName={autopf}\Carbon Zones
@@ -60,4 +60,33 @@ begin
   Exec('taskkill', '/f /im CarbonZones.exe', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
   Sleep(500);
   Result := True;
+end;
+
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+var
+  StagingDir: String;
+  DesktopDir: String;
+  FindRec: TFindRec;
+begin
+  if CurUninstallStep = usPostUninstall then
+  begin
+    { Move staged files back to desktop }
+    StagingDir := ExpandConstant('{localappdata}\CarbonZones\__staged');
+    DesktopDir := ExpandConstant('{userdesktop}');
+    if DirExists(StagingDir) then
+    begin
+      if FindFirst(StagingDir + '\*', FindRec) then
+      try
+        repeat
+          if (FindRec.Name <> '.') and (FindRec.Name <> '..') then
+            RenameFile(StagingDir + '\' + FindRec.Name, DesktopDir + '\' + FindRec.Name);
+        until not FindNext(FindRec);
+      finally
+        FindClose(FindRec);
+      end;
+      RemoveDir(StagingDir);
+    end;
+    { Clean up CarbonZones data directory }
+    DelTree(ExpandConstant('{localappdata}\CarbonZones'), True, True, True);
+  end;
 end;
