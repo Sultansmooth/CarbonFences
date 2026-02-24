@@ -36,6 +36,16 @@ namespace CarbonZones.Model
         /// </summary>
         public int TitleHeight { get; set; } = 35;
 
+        /// <summary>
+        /// Accent color as ARGB int. Default is blue (100, 160, 230).
+        /// </summary>
+        public int AccentColor { get; set; } = -10182682; // Color.FromArgb(100, 160, 230).ToArgb()
+
+        /// <summary>
+        /// Background opacity 0–100. Default 60.
+        /// </summary>
+        public int Opacity { get; set; } = 60;
+
         public List<string> Files { get; set; } = new List<string>();
 
         public List<FenceTab> Tabs { get; set; } = new List<FenceTab>();

@@ -120,8 +120,7 @@ namespace CarbonZones.Model
                         {
                             if (!File.Exists(filePath) && !Directory.Exists(filePath)) continue;
                             var attrs = File.GetAttributes(filePath);
-                            if (attrs.HasFlag(FileAttributes.Hidden))
-                                File.SetAttributes(filePath, attrs & ~FileAttributes.Hidden);
+                            File.SetAttributes(filePath, attrs & ~FileAttributes.Hidden & ~FileAttributes.System);
                         }
                         catch { }
                     }

@@ -546,21 +546,28 @@ namespace CarbonZones
             g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
             g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
 
-            // Background — very transparent when idle, solid on hover
-            int bgAlpha = (int)(30 + 120 * hoverAlpha);
+            // Derive colors from accent + opacity
+            var accent = Color.FromArgb(fenceInfo.AccentColor);
+            float opacityScale = Math.Clamp(fenceInfo.Opacity, 0, 100) / 100f;
+            int maxBgAlpha = (int)(255 * opacityScale);
+            int idleBgAlpha = (int)(maxBgAlpha * 0.2f);
+            int deltaBgAlpha = maxBgAlpha - idleBgAlpha;
+
+            // Background — transparent when idle, opaque on hover
+            int bgAlpha = (int)(idleBgAlpha + deltaBgAlpha * hoverAlpha);
             using (var bgBrush = new SolidBrush(Color.FromArgb(bgAlpha, Color.Black)))
                 g.FillRectangle(bgBrush, ClientRectangle);
 
-            // Hover border glow
+            // Hover border glow — accent color
             if (hoverAlpha > 0)
             {
                 int glowAlpha = (int)(60 * hoverAlpha);
-                using var borderPen = new Pen(Color.FromArgb(glowAlpha, 120, 180, 255), 1);
+                using var borderPen = new Pen(Color.FromArgb(glowAlpha, accent.R, accent.G, accent.B), 1);
                 g.DrawRectangle(borderPen, 0, 0, Width - 1, Height - 1);
             }
 
             // Title background, then text on top
-            int titleAlpha = (int)(15 + 60 * hoverAlpha);
+            int titleAlpha = (int)((15 + 60 * hoverAlpha) * opacityScale);
             using (var titleBgBrush = new SolidBrush(Color.FromArgb(titleAlpha, Color.Black)))
                 g.FillRectangle(titleBgBrush, new RectangleF(0, 0, Width, titleHeight));
             int textAlpha = (int)(60 + 195 * hoverAlpha);
@@ -569,7 +576,7 @@ namespace CarbonZones
                 g.DrawString(Text, titleFont, titleBrush, new PointF(Width / 2, titleOffset), titleFormat);
 
             // Tab bar
-            int tabBgAlpha = (int)(10 + 40 * hoverAlpha);
+            int tabBgAlpha = (int)((10 + 40 * hoverAlpha) * opacityScale);
             using (var tabBgBrush = new SolidBrush(Color.FromArgb(tabBgAlpha, Color.Black)))
                 g.FillRectangle(tabBgBrush, new Rectangle(0, titleHeight, Width, scaledTabBarHeight));
 
@@ -596,25 +603,26 @@ namespace CarbonZones
 
                 if (isDragTarget)
                 {
-                    using var dragBrush = new SolidBrush(Color.FromArgb(60, 100, 200, 255));
+                    using var dragBrush = new SolidBrush(Color.FromArgb(60, accent.R, accent.G, accent.B));
                     g.FillRectangle(dragBrush, tabRect);
                 }
                 else if (isActive)
                 {
                     int activeAlpha = (int)(30 + 80 * hoverAlpha);
-                    using var activeBrush = new SolidBrush(Color.FromArgb(activeAlpha, 100, 160, 230));
+                    using var activeBrush = new SolidBrush(Color.FromArgb(activeAlpha, accent.R, accent.G, accent.B));
                     g.FillRectangle(activeBrush, tabRect);
                 }
                 else if (isTabHover)
                 {
                     int hoverTabAlpha = (int)(20 + 50 * hoverAlpha);
-                    using var hoverBrush = new SolidBrush(Color.FromArgb(hoverTabAlpha, 80, 130, 200));
+                    int dr = (int)(accent.R * 0.8), dg = (int)(accent.G * 0.8), db = (int)(accent.B * 0.8);
+                    using var hoverBrush = new SolidBrush(Color.FromArgb(hoverTabAlpha, dr, dg, db));
                     g.FillRectangle(hoverBrush, tabRect);
                 }
 
                 if (isActive)
                 {
-                    using var indicatorPen = new Pen(Color.FromArgb((int)(120 + 135 * hoverAlpha), 100, 170, 255), 2);
+                    using var indicatorPen = new Pen(Color.FromArgb((int)(120 + 135 * hoverAlpha), accent.R, accent.G, accent.B), 2);
                     g.DrawLine(indicatorPen, tabX, titleHeight + scaledTabBarHeight - 1,
                                tabX + tabWidth, titleHeight + scaledTabBarHeight - 1);
                 }
@@ -893,6 +901,20 @@ namespace CarbonZones
             }
         }
 
+        private void appearanceToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            var currentColor = Color.FromArgb(fenceInfo.AccentColor);
+            var dialog = new AppearanceDialog(currentColor, fenceInfo.Opacity);
+            dialog.TopMost = true;
+            if (dialog.ShowDialog(this) == DialogResult.OK)
+            {
+                fenceInfo.AccentColor = dialog.AccentColor.ToArgb();
+                fenceInfo.Opacity = dialog.OpacityValue;
+                Refresh();
+                Save();
+            }
+        }
+
         private void FenceWindow_MouseClick(object sender, MouseEventArgs e)
         {
             if (e.Button != MouseButtons.Right)
@@ -963,9 +985,9 @@ namespace CarbonZones
             try
             {
                 var attrs = File.GetAttributes(path);
-                if (!attrs.HasFlag(FileAttributes.Hidden))
-                    File.SetAttributes(path, attrs | FileAttributes.Hidden);
+                File.SetAttributes(path, attrs | FileAttributes.Hidden | FileAttributes.System);
                 NotifyShell(path);
+                DesktopUtil.RefreshDesktopIcons();
             }
             catch { }
         }
@@ -975,9 +997,9 @@ namespace CarbonZones
             try
             {
                 var attrs = File.GetAttributes(path);
-                if (attrs.HasFlag(FileAttributes.Hidden))
-                    File.SetAttributes(path, attrs & ~FileAttributes.Hidden);
+                File.SetAttributes(path, attrs & ~FileAttributes.Hidden & ~FileAttributes.System);
                 NotifyShell(path);
+                DesktopUtil.RefreshDesktopIcons();
             }
             catch { }
         }

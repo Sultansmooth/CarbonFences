@@ -36,6 +36,7 @@
             this.minifyToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.renameToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.titleSizeToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.appearanceToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.toolStripSeparator1 = new System.Windows.Forms.ToolStripSeparator();
             this.newFenceToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.exitToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
@@ -51,6 +52,7 @@
             this.minifyToolStripMenuItem,
             this.renameToolStripMenuItem,
             this.titleSizeToolStripMenuItem,
+            this.appearanceToolStripMenuItem,
             this.toolStripSeparator1,
             this.newFenceToolStripMenuItem,
             this.exitToolStripMenuItem});
@@ -89,9 +91,16 @@
             resources.ApplyResources(this.titleSizeToolStripMenuItem, "titleSizeToolStripMenuItem");
             this.titleSizeToolStripMenuItem.Name = "titleSizeToolStripMenuItem";
             this.titleSizeToolStripMenuItem.Click += new System.EventHandler(this.titleSizeToolStripMenuItem_Click);
-            // 
+            //
+            // appearanceToolStripMenuItem
+            //
+            this.appearanceToolStripMenuItem.Name = "appearanceToolStripMenuItem";
+            this.appearanceToolStripMenuItem.Size = new System.Drawing.Size(152, 22);
+            this.appearanceToolStripMenuItem.Text = "Appearance...";
+            this.appearanceToolStripMenuItem.Click += new System.EventHandler(this.appearanceToolStripMenuItem_Click);
+            //
             // toolStripSeparator1
-            // 
+            //
             resources.ApplyResources(this.toolStripSeparator1, "toolStripSeparator1");
             this.toolStripSeparator1.Name = "toolStripSeparator1";
             // 
@@ -150,6 +159,7 @@
         private System.Windows.Forms.ToolStripMenuItem deleteItemToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem newFenceToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem titleSizeToolStripMenuItem;
+        private System.Windows.Forms.ToolStripMenuItem appearanceToolStripMenuItem;
     }
 }
 

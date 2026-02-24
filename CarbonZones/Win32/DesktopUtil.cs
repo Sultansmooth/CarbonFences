@@ -59,6 +59,12 @@ namespace CarbonZones.Win32
             SetWindowLongPtr(handle, GWL_HWNDPARENT, nWinHandle.ToInt32());
         }
 
+        [DllImport("user32.dll")]
+        static extern IntPtr SendMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
+
+        private const uint LVM_ARRANGE = 0x1016;
+        private const int LVA_DEFAULT = 0x0000;
+
         public static void SetDesktopIconsVisible(bool visible)
         {
             IntPtr defView = GetShellDefView();
@@ -68,6 +74,20 @@ namespace CarbonZones.Win32
             if (listView == IntPtr.Zero) return;
 
             ShowWindow(listView, visible ? SW_SHOW : SW_HIDE);
+        }
+
+        /// <summary>
+        /// Sends LVM_ARRANGE to the desktop ListView to force it to re-read item states.
+        /// </summary>
+        public static void RefreshDesktopIcons()
+        {
+            IntPtr defView = GetShellDefView();
+            if (defView == IntPtr.Zero) return;
+
+            IntPtr listView = FindWindowEx(defView, IntPtr.Zero, "SysListView32", null);
+            if (listView == IntPtr.Zero) return;
+
+            SendMessage(listView, LVM_ARRANGE, (IntPtr)LVA_DEFAULT, IntPtr.Zero);
         }
 
         private static IntPtr GetShellDefView()
