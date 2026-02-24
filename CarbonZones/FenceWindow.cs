@@ -1109,49 +1109,14 @@ namespace CarbonZones
         private void ShowShellContextMenuSafe(string originalPath, Point screenPos)
         {
             var effectivePath = FileStaging.GetEffectivePath(originalPath);
-            shellContextMenu.ShowContextMenu(new[] { new FileInfo(effectivePath) }, screenPos);
-
-            // After menu closes, check if the file was renamed or deleted
-            if (File.Exists(effectivePath) || Directory.Exists(effectivePath))
-                return; // still exists, nothing to fix
-
-            // File is gone at the effective path — try to find the renamed file
-            var stagingDir = Path.GetDirectoryName(FileStaging.GetStagedPath(originalPath));
-            if (stagingDir != null && Directory.Exists(stagingDir))
-            {
-                // Look for any file/folder in staging that doesn't match a known fenced path
-                var knownStaged = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                foreach (var tab in fenceInfo.Tabs)
-                    foreach (var f in tab.Files)
-                        knownStaged.Add(FileStaging.GetStagedPath(f));
-
-                foreach (var entry in Directory.GetFileSystemEntries(stagingDir))
-                {
-                    if (!knownStaged.Contains(entry))
-                    {
-                        // Found the renamed file — update original path to new desktop name
-                        var newFileName = Path.GetFileName(entry);
-                        var newOriginalPath = Path.Combine(Path.GetDirectoryName(originalPath), newFileName);
-                        for (int t = 0; t < fenceInfo.Tabs.Count; t++)
-                        {
-                            int idx = fenceInfo.Tabs[t].Files.IndexOf(originalPath);
-                            if (idx >= 0)
-                            {
-                                fenceInfo.Tabs[t].Files[idx] = newOriginalPath;
-                                Save();
-                                Refresh();
-                                return;
-                            }
-                        }
-                    }
-                }
-            }
-
-            // File was deleted via context menu — remove from fence
-            foreach (var tab in fenceInfo.Tabs)
-                tab.Files.Remove(originalPath);
-            hoveringItem = null;
-            Save();
+            // Use the correct overload for files vs directories
+            if (Directory.Exists(effectivePath))
+                shellContextMenu.ShowContextMenu(new[] { new DirectoryInfo(effectivePath) }, screenPos);
+            else
+                shellContextMenu.ShowContextMenu(new[] { new FileInfo(effectivePath) }, screenPos);
+            // Don't try to detect renames here — Properties dialogs rename
+            // asynchronously after the context menu closes. The staging
+            // FileSystemWatcher reconciliation handles renames and deletes.
             Refresh();
         }
 

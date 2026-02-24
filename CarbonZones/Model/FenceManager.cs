@@ -65,37 +65,52 @@ namespace CarbonZones.Model
                     Directory.GetFileSystemEntries(stagingDir).Select(Path.GetFileName),
                     StringComparer.OrdinalIgnoreCase);
 
+                // Build global tracked names once
+                var allTrackedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var w in fenceWindows)
+                    foreach (var t in w.FenceInfo.Tabs)
+                        foreach (var f in t.Files)
+                            allTrackedNames.Add(Path.GetFileName(f));
+
                 foreach (var window in fenceWindows)
                 {
                     bool changed = false;
                     foreach (var tab in window.FenceInfo.Tabs)
                     {
-                        for (int i = 0; i < tab.Files.Count; i++)
+                        for (int i = tab.Files.Count - 1; i >= 0; i--)
                         {
                             var expectedStagedName = Path.GetFileName(tab.Files[i]);
                             if (stagedFiles.Contains(expectedStagedName))
                                 continue; // file is still in staging under expected name
 
-                            // This file's staged copy is missing — look for an
-                            // untracked file in staging that could be the renamed version
-                            var allTrackedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                            foreach (var w in fenceWindows)
-                                foreach (var t in w.FenceInfo.Tabs)
-                                    foreach (var f in t.Files)
-                                        allTrackedNames.Add(Path.GetFileName(f));
+                            // Also check if it exists at original desktop path (not staged)
+                            if (File.Exists(tab.Files[i]) || Directory.Exists(tab.Files[i]))
+                                continue;
 
+                            // File is missing from both staging and desktop — try to
+                            // find an untracked file in staging (rename detection)
+                            bool matched = false;
                             foreach (var stagedName in stagedFiles)
                             {
                                 if (!allTrackedNames.Contains(stagedName))
                                 {
                                     // Found an untracked file — this is the renamed version
                                     var dir = Path.GetDirectoryName(tab.Files[i]);
+                                    allTrackedNames.Remove(expectedStagedName);
                                     tab.Files[i] = Path.Combine(dir, stagedName);
-                                    changed = true;
-                                    // Add to tracked so we don't match it again
                                     allTrackedNames.Add(stagedName);
+                                    changed = true;
+                                    matched = true;
                                     break;
                                 }
+                            }
+
+                            if (!matched)
+                            {
+                                // File was genuinely deleted — remove from fence
+                                allTrackedNames.Remove(expectedStagedName);
+                                tab.Files.RemoveAt(i);
+                                changed = true;
                             }
                         }
                     }
