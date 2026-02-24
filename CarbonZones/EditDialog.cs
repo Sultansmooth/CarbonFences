@@ -16,6 +16,8 @@ namespace CarbonZones
         {
             InitializeComponent();
             tbName.Text = oldName;
+            tbName.SelectAll();
+            ActiveControl = tbName;
         }
 
         public string NewName => tbName.Text;
