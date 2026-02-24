@@ -27,6 +27,12 @@ namespace CarbonZones
                     if (Application.OpenForms.Count == 0)
                         FenceManager.Instance.CreateFence("First fence");
 
+                    // Periodically re-stage files that reappear on the desktop
+                    // (OneDrive sync, Windows shortcut restoration, etc.)
+                    var restageTimer = new System.Windows.Forms.Timer { Interval = 30_000 };
+                    restageTimer.Tick += (s, e) => FenceManager.Instance.HideAllFencedIcons();
+                    restageTimer.Start();
+
                     using var hook = new DesktopClickHook();
                     hook.DesktopDoubleClicked += (s, e) => FenceManager.Instance.ToggleFences();
 

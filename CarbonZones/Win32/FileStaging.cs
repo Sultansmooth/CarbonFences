@@ -21,11 +21,11 @@ namespace CarbonZones.Win32
         /// </summary>
         public static string GetEffectivePath(string originalPath)
         {
-            if (File.Exists(originalPath) || Directory.Exists(originalPath))
-                return originalPath;
             var staged = GetStagedPath(originalPath);
             if (File.Exists(staged) || Directory.Exists(staged))
                 return staged;
+            if (File.Exists(originalPath) || Directory.Exists(originalPath))
+                return originalPath;
             return originalPath;
         }
 
