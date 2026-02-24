@@ -153,7 +153,8 @@ namespace CarbonZones
 
             // Mouse leave (WM_NCMOUSELEAVE — fires when leaving the non-client/title area)
             var myrect = new Rectangle(Location, Size);
-            if (m.Msg == 0x02a2 && !myrect.IntersectsWith(new Rectangle(MousePosition, new Size(1, 1))))
+            if (m.Msg == 0x02a2 && !myrect.IntersectsWith(new Rectangle(MousePosition, new Size(1, 1)))
+                && itemDragState != ItemDragState.Dragging)
             {
                 isMouseOver = false;
                 hoverTimer.Start();
@@ -437,6 +438,13 @@ namespace CarbonZones
             // Item drag resolution
             if (itemDragState == ItemDragState.Dragging && dragItemPath != null)
             {
+                // Save drag info and reset state BEFORE releasing capture,
+                // because Capture=false triggers OnMouseCaptureChanged which
+                // would otherwise clear the state before we can resolve the drop.
+                var droppedPath = dragItemPath;
+                itemDragState = ItemDragState.None;
+                dragItemPath = null;
+
                 Capture = false;
                 Cursor = Cursors.Default;
 
@@ -449,8 +457,8 @@ namespace CarbonZones
                 if (targetFence != null && targetFence != this)
                 {
                     // Inter-fence transfer
-                    targetFence.AcceptItem(dragItemPath);
-                    ActiveFiles.Remove(dragItemPath);
+                    targetFence.AcceptItem(droppedPath);
+                    ActiveFiles.Remove(droppedPath);
                     Save();
                 }
                 else if (ClientRectangle.Contains(clientPos))
@@ -461,8 +469,8 @@ namespace CarbonZones
                         int targetTab = GetTabIndexAtPoint(clientPos);
                         if (targetTab >= 0 && targetTab != activeTabIndex)
                         {
-                            ActiveFiles.Remove(dragItemPath);
-                            fenceInfo.Tabs[targetTab].Files.Add(dragItemPath);
+                            ActiveFiles.Remove(droppedPath);
+                            fenceInfo.Tabs[targetTab].Files.Add(droppedPath);
                             Save();
                         }
                     }
@@ -471,14 +479,12 @@ namespace CarbonZones
                 else
                 {
                     // Dropped on desktop (or outside any fence) — unhide and remove
-                    ShowDesktopIcon(dragItemPath);
-                    ActiveFiles.Remove(dragItemPath);
+                    ShowDesktopIcon(droppedPath);
+                    ActiveFiles.Remove(droppedPath);
                     Save();
                     DesktopUtil.RefreshDesktopIcons();
                 }
 
-                itemDragState = ItemDragState.None;
-                dragItemPath = null;
                 Refresh();
                 return;
             }
@@ -544,6 +550,7 @@ namespace CarbonZones
 
         private void FenceWindow_MouseLeave(object sender, EventArgs e)
         {
+            if (itemDragState == ItemDragState.Dragging) return;
             isMouseOver = false;
             hoverTimer.Start();
 
