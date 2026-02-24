@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
+using System.Linq;
 using System.Xml.Serialization;
 using CarbonZones.Win32;
 
@@ -18,6 +19,7 @@ namespace CarbonZones.Model
         private readonly List<FenceWindow> fenceWindows = new List<FenceWindow>();
         private bool fencesVisible = true;
         private FileSystemWatcher stagingWatcher;
+        private System.Threading.Timer reconcileTimer;
 
         public FenceManager()
         {
@@ -38,40 +40,81 @@ namespace CarbonZones.Model
                     IncludeSubdirectories = false,
                     EnableRaisingEvents = true
                 };
-                stagingWatcher.Renamed += OnStagedFileRenamed;
+                stagingWatcher.Renamed += OnStagingChanged;
+                stagingWatcher.Created += OnStagingChanged;
+                stagingWatcher.Deleted += OnStagingChanged;
             }
             catch { }
         }
 
-        private void OnStagedFileRenamed(object sender, RenamedEventArgs e)
+        private void OnStagingChanged(object sender, FileSystemEventArgs e)
         {
-            var oldFileName = Path.GetFileName(e.OldFullPath);
-            var newFileName = Path.GetFileName(e.FullPath);
+            // Debounce: wait 500ms for operations to settle (delete+create = rename)
+            reconcileTimer?.Dispose();
+            reconcileTimer = new System.Threading.Timer(_ => ReconcileStaging(), null, 500, System.Threading.Timeout.Infinite);
+        }
 
-            foreach (var window in fenceWindows)
+        private void ReconcileStaging()
+        {
+            try
             {
-                bool changed = false;
-                foreach (var tab in window.FenceInfo.Tabs)
+                if (!Directory.Exists(stagingDir)) return;
+
+                // Build a set of all filenames currently in staging
+                var stagedFiles = new HashSet<string>(
+                    Directory.GetFileSystemEntries(stagingDir).Select(Path.GetFileName),
+                    StringComparer.OrdinalIgnoreCase);
+
+                foreach (var window in fenceWindows)
                 {
-                    for (int i = 0; i < tab.Files.Count; i++)
+                    bool changed = false;
+                    foreach (var tab in window.FenceInfo.Tabs)
                     {
-                        if (string.Equals(Path.GetFileName(tab.Files[i]), oldFileName, StringComparison.OrdinalIgnoreCase))
+                        for (int i = 0; i < tab.Files.Count; i++)
                         {
-                            var dir = Path.GetDirectoryName(tab.Files[i]);
-                            tab.Files[i] = Path.Combine(dir, newFileName);
-                            changed = true;
+                            var expectedStagedName = Path.GetFileName(tab.Files[i]);
+                            if (stagedFiles.Contains(expectedStagedName))
+                                continue; // file is still in staging under expected name
+
+                            // This file's staged copy is missing — look for an
+                            // untracked file in staging that could be the renamed version
+                            var allTrackedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                            foreach (var w in fenceWindows)
+                                foreach (var t in w.FenceInfo.Tabs)
+                                    foreach (var f in t.Files)
+                                        allTrackedNames.Add(Path.GetFileName(f));
+
+                            foreach (var stagedName in stagedFiles)
+                            {
+                                if (!allTrackedNames.Contains(stagedName))
+                                {
+                                    // Found an untracked file — this is the renamed version
+                                    var dir = Path.GetDirectoryName(tab.Files[i]);
+                                    tab.Files[i] = Path.Combine(dir, stagedName);
+                                    changed = true;
+                                    // Add to tracked so we don't match it again
+                                    allTrackedNames.Add(stagedName);
+                                    break;
+                                }
+                            }
                         }
                     }
-                }
-                if (changed)
-                {
-                    UpdateFence(window.FenceInfo);
-                    if (window.InvokeRequired)
-                        window.BeginInvoke(new Action(() => window.Refresh()));
-                    else
-                        window.Refresh();
+                    if (changed)
+                    {
+                        UpdateFence(window.FenceInfo);
+                        RefreshWindow(window);
+                    }
                 }
             }
+            catch { }
+        }
+
+        private void RefreshWindow(FenceWindow window)
+        {
+            if (window.InvokeRequired)
+                window.BeginInvoke(new Action(() => window.Refresh()));
+            else
+                window.Refresh();
         }
 
         public void RegisterWindow(FenceWindow window)
