@@ -14,13 +14,64 @@ namespace CarbonZones.Model
         private const string MetaFileName = "__fence_metadata.xml";
 
         private readonly string basePath;
+        private readonly string stagingDir;
         private readonly List<FenceWindow> fenceWindows = new List<FenceWindow>();
         private bool fencesVisible = true;
+        private FileSystemWatcher stagingWatcher;
 
         public FenceManager()
         {
             basePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CarbonZones");
+            stagingDir = Path.Combine(basePath, "__staged");
             EnsureDirectoryExists(basePath);
+            StartStagingWatcher();
+        }
+
+        private void StartStagingWatcher()
+        {
+            try
+            {
+                EnsureDirectoryExists(stagingDir);
+                stagingWatcher = new FileSystemWatcher(stagingDir)
+                {
+                    NotifyFilter = NotifyFilters.FileName | NotifyFilters.DirectoryName,
+                    IncludeSubdirectories = false,
+                    EnableRaisingEvents = true
+                };
+                stagingWatcher.Renamed += OnStagedFileRenamed;
+            }
+            catch { }
+        }
+
+        private void OnStagedFileRenamed(object sender, RenamedEventArgs e)
+        {
+            var oldFileName = Path.GetFileName(e.OldFullPath);
+            var newFileName = Path.GetFileName(e.FullPath);
+
+            foreach (var window in fenceWindows)
+            {
+                bool changed = false;
+                foreach (var tab in window.FenceInfo.Tabs)
+                {
+                    for (int i = 0; i < tab.Files.Count; i++)
+                    {
+                        if (string.Equals(Path.GetFileName(tab.Files[i]), oldFileName, StringComparison.OrdinalIgnoreCase))
+                        {
+                            var dir = Path.GetDirectoryName(tab.Files[i]);
+                            tab.Files[i] = Path.Combine(dir, newFileName);
+                            changed = true;
+                        }
+                    }
+                }
+                if (changed)
+                {
+                    UpdateFence(window.FenceInfo);
+                    if (window.InvokeRequired)
+                        window.BeginInvoke(new Action(() => window.Refresh()));
+                    else
+                        window.Refresh();
+                }
+            }
         }
 
         public void RegisterWindow(FenceWindow window)

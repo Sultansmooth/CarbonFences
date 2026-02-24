@@ -26,6 +26,7 @@ namespace CarbonZones
         private const float shadowDist = 1.5f;
 
         private readonly FenceInfo fenceInfo;
+        public FenceInfo FenceInfo => fenceInfo;
 
         private Font titleFont;
         private Font iconFont;
