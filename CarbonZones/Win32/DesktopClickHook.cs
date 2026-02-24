@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.Runtime.InteropServices;
@@ -13,6 +14,11 @@ namespace CarbonZones.Win32
         private const int WM_LBUTTONDOWN = 0x0201;
         private const int WM_LBUTTONUP = 0x0202;
         private const int WM_MOUSEMOVE = 0x0200;
+
+        // Fence window handle registry — prevents desktop-click detection inside fences
+        private static readonly HashSet<IntPtr> fenceHandles = new HashSet<IntPtr>();
+        public static void RegisterFenceHandle(IntPtr hwnd) => fenceHandles.Add(hwnd);
+        public static void UnregisterFenceHandle(IntPtr hwnd) => fenceHandles.Remove(hwnd);
 
         private delegate IntPtr LowLevelMouseProc(int nCode, IntPtr wParam, IntPtr lParam);
 
@@ -54,6 +60,20 @@ namespace CarbonZones.Win32
 
         [DllImport("user32.dll")]
         private static extern short GetAsyncKeyState(int vKey);
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct RECT
+        {
+            public int Left, Top, Right, Bottom;
+        }
+
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool IsWindowVisible(IntPtr hWnd);
 
         private const int VK_MENU = 0x12; // Alt key
 
@@ -161,6 +181,22 @@ namespace CarbonZones.Win32
         private static bool IsDesktopWindow(POINT pt)
         {
             var hwnd = WindowFromPoint(pt);
+
+            // If WindowFromPoint returned a registered fence handle, it's not the desktop
+            if (fenceHandles.Contains(hwnd))
+                return false;
+
+            // Even if class name looks like desktop, check if point falls inside any fence window
+            foreach (var fenceHwnd in fenceHandles)
+            {
+                if (IsWindowVisible(fenceHwnd) && GetWindowRect(fenceHwnd, out var rect))
+                {
+                    if (pt.x >= rect.Left && pt.x <= rect.Right &&
+                        pt.y >= rect.Top && pt.y <= rect.Bottom)
+                        return false;
+                }
+            }
+
             var sb = new StringBuilder(64);
             GetClassName(hwnd, sb, sb.Capacity);
             var className = sb.ToString();

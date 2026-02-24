@@ -54,6 +54,8 @@ namespace CarbonZones
                     };
                     trayIcon.DoubleClick += (s, e) => FenceManager.Instance.ToggleFences();
 
+                    Application.ApplicationExit += (s, e) => FenceManager.Instance.UnhideAllDesktopIcons();
+
                     Application.Run();
                 }
             }

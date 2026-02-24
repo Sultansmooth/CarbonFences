@@ -97,6 +97,41 @@ namespace CarbonZones.Model
             writer.Close();
         }
 
+        public void UnhideAllDesktopIcons()
+        {
+            try
+            {
+                foreach (var dir in Directory.EnumerateDirectories(basePath))
+                {
+                    var metaFile = Path.Combine(dir, MetaFileName);
+                    if (!File.Exists(metaFile)) continue;
+                    var serializer = new XmlSerializer(typeof(FenceInfo));
+                    using var reader = new StreamReader(metaFile);
+                    var fence = serializer.Deserialize(reader) as FenceInfo;
+                    if (fence == null) continue;
+
+                    var allFiles = new List<string>(fence.Files);
+                    foreach (var tab in fence.Tabs)
+                        allFiles.AddRange(tab.Files);
+
+                    foreach (var filePath in allFiles)
+                    {
+                        try
+                        {
+                            if (!File.Exists(filePath) && !Directory.Exists(filePath)) continue;
+                            var attrs = File.GetAttributes(filePath);
+                            if (attrs.HasFlag(FileAttributes.Hidden))
+                                File.SetAttributes(filePath, attrs & ~FileAttributes.Hidden);
+                        }
+                        catch { }
+                    }
+                }
+            }
+            catch { }
+
+            DesktopUtil.SetDesktopIconsVisible(true);
+        }
+
         private void EnsureDirectoryExists(string dir)
         {
             var di = new DirectoryInfo(dir);

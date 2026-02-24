@@ -129,6 +129,7 @@ namespace CarbonZones
             Minify();
 
             FenceManager.Instance.RegisterWindow(this);
+            DesktopClickHook.RegisterFenceHandle(Handle);
         }
 
         private const int WM_RBUTTONUP = 0x0205;
@@ -706,6 +707,7 @@ namespace CarbonZones
 
         private void FenceWindow_FormClosed(object sender, FormClosedEventArgs e)
         {
+            DesktopClickHook.UnregisterFenceHandle(Handle);
             FenceManager.Instance.UnregisterWindow(this);
             // App stays alive via tray icon even with no fences open
         }
@@ -870,13 +872,31 @@ namespace CarbonZones
         [DllImport("shell32.dll")]
         private static extern void SHChangeNotify(int wEventId, uint uFlags, IntPtr dwItem1, IntPtr dwItem2);
         private const int SHCNE_UPDATEITEM = 0x00002000;
+        private const int SHCNE_ATTRIBUTES = 0x00000800;
+        private const int SHCNE_UPDATEDIR = 0x00001000;
         private const uint SHCNF_PATHW = 0x0005;
+
+        [DllImport("shell32.dll")]
+        private static extern int SHGetKnownFolderPath([MarshalAs(UnmanagedType.LPStruct)] Guid rfid, uint dwFlags, IntPtr hToken, out IntPtr ppszPath);
+        private static readonly Guid FOLDERID_Desktop = new Guid("B4BFCC3A-DB2C-424C-B029-7FE99A87C641");
 
         private static void NotifyShell(string path)
         {
             var ptr = Marshal.StringToHGlobalUni(path);
-            try { SHChangeNotify(SHCNE_UPDATEITEM, SHCNF_PATHW, ptr, IntPtr.Zero); }
+            try
+            {
+                SHChangeNotify(SHCNE_UPDATEITEM, SHCNF_PATHW, ptr, IntPtr.Zero);
+                SHChangeNotify(SHCNE_ATTRIBUTES, SHCNF_PATHW, ptr, IntPtr.Zero);
+            }
             finally { Marshal.FreeHGlobal(ptr); }
+
+            var dir = Path.GetDirectoryName(path);
+            if (dir != null)
+            {
+                var dirPtr = Marshal.StringToHGlobalUni(dir);
+                try { SHChangeNotify(SHCNE_UPDATEDIR, SHCNF_PATHW, dirPtr, IntPtr.Zero); }
+                finally { Marshal.FreeHGlobal(dirPtr); }
+            }
         }
 
         private static void HideDesktopIcon(string path)
@@ -911,8 +931,21 @@ namespace CarbonZones
             if (dir == null) return false;
             var userDesktop = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
             var publicDesktop = Environment.GetFolderPath(Environment.SpecialFolder.CommonDesktopDirectory);
-            return string.Equals(dir, userDesktop, StringComparison.OrdinalIgnoreCase)
-                || string.Equals(dir, publicDesktop, StringComparison.OrdinalIgnoreCase);
+
+            if (string.Equals(dir, userDesktop, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(dir, publicDesktop, StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            // Also check via SHGetKnownFolderPath (handles OneDrive-redirected desktops)
+            if (SHGetKnownFolderPath(FOLDERID_Desktop, 0, IntPtr.Zero, out var pPath) == 0)
+            {
+                var knownDesktop = Marshal.PtrToStringUni(pPath);
+                Marshal.FreeCoTaskMem(pPath);
+                if (knownDesktop != null && string.Equals(dir, knownDesktop, StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+
+            return false;
         }
     }
 
