@@ -100,6 +100,7 @@ namespace CarbonZones
             // Tab context menu
             tabContextMenu = new ContextMenuStrip();
             tabContextMenu.Items.Add("Rename Tab", null, TabRename_Click);
+            tabContextMenu.Items.Add("Tab Appearance...", null, TabAppearance_Click);
             tabContextMenu.Items.Add("Delete Tab", null, TabDelete_Click);
 
             this.MouseWheel += FenceWindow_MouseWheel;
@@ -631,10 +632,11 @@ namespace CarbonZones
             g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
             g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
 
-            // Derive colors from accent + opacity
-            var accent = Color.FromArgb(fenceInfo.AccentColor);
-            var boxBase = fenceInfo.BoxColor != 0 ? Color.FromArgb(fenceInfo.BoxColor) : Color.Black;
-            var labelBase = fenceInfo.LabelColor != 0 ? Color.FromArgb(fenceInfo.LabelColor) : Color.Black;
+            // Derive colors — active tab overrides fence defaults
+            var activeTab = fenceInfo.Tabs[activeTabIndex];
+            var accent = activeTab.AccentColor != 0 ? Color.FromArgb(activeTab.AccentColor) : Color.FromArgb(fenceInfo.AccentColor);
+            var boxBase = activeTab.BoxColor != 0 ? Color.FromArgb(activeTab.BoxColor) : (fenceInfo.BoxColor != 0 ? Color.FromArgb(fenceInfo.BoxColor) : Color.Black);
+            var labelBase = activeTab.LabelColor != 0 ? Color.FromArgb(activeTab.LabelColor) : (fenceInfo.LabelColor != 0 ? Color.FromArgb(fenceInfo.LabelColor) : Color.Black);
             float opacityScale = Math.Clamp(fenceInfo.Opacity, 0, 100) / 100f;
             int maxBgAlpha = (int)(255 * opacityScale);
             int idleBgAlpha = (int)(maxBgAlpha * 0.2f);
@@ -688,28 +690,31 @@ namespace CarbonZones
                 if (isTabHover)
                     hoveringTabIndex = i;
 
+                // Per-tab accent color (falls back to fence accent)
+                var tabAccent = tab.AccentColor != 0 ? Color.FromArgb(tab.AccentColor) : Color.FromArgb(fenceInfo.AccentColor);
+
                 if (isDragTarget)
                 {
-                    using var dragBrush = new SolidBrush(Color.FromArgb(60, accent.R, accent.G, accent.B));
+                    using var dragBrush = new SolidBrush(Color.FromArgb(60, tabAccent.R, tabAccent.G, tabAccent.B));
                     g.FillRectangle(dragBrush, tabRect);
                 }
                 else if (isActive)
                 {
                     int activeAlpha = (int)(30 + 80 * hoverAlpha);
-                    using var activeBrush = new SolidBrush(Color.FromArgb(activeAlpha, accent.R, accent.G, accent.B));
+                    using var activeBrush = new SolidBrush(Color.FromArgb(activeAlpha, tabAccent.R, tabAccent.G, tabAccent.B));
                     g.FillRectangle(activeBrush, tabRect);
                 }
                 else if (isTabHover)
                 {
                     int hoverTabAlpha = (int)(20 + 50 * hoverAlpha);
-                    int dr = (int)(accent.R * 0.8), dg = (int)(accent.G * 0.8), db = (int)(accent.B * 0.8);
+                    int dr = (int)(tabAccent.R * 0.8), dg = (int)(tabAccent.G * 0.8), db = (int)(tabAccent.B * 0.8);
                     using var hoverBrush = new SolidBrush(Color.FromArgb(hoverTabAlpha, dr, dg, db));
                     g.FillRectangle(hoverBrush, tabRect);
                 }
 
                 if (isActive)
                 {
-                    using var indicatorPen = new Pen(Color.FromArgb((int)(120 + 135 * hoverAlpha), accent.R, accent.G, accent.B), 2);
+                    using var indicatorPen = new Pen(Color.FromArgb((int)(120 + 135 * hoverAlpha), tabAccent.R, tabAccent.G, tabAccent.B), 2);
                     g.DrawLine(indicatorPen, tabX, titleHeight + scaledTabBarHeight - 1,
                                tabX + tabWidth, titleHeight + scaledTabBarHeight - 1);
                 }
@@ -958,6 +963,25 @@ namespace CarbonZones
                 activeTabIndex = fenceInfo.Tabs.Count - 1;
             Save();
             Refresh();
+        }
+
+        private void TabAppearance_Click(object sender, EventArgs e)
+        {
+            var tab = fenceInfo.Tabs[contextMenuTabIndex];
+            var currentAccent = tab.AccentColor != 0 ? Color.FromArgb(tab.AccentColor) : Color.FromArgb(fenceInfo.AccentColor);
+            var currentLabel = tab.LabelColor != 0 ? Color.FromArgb(tab.LabelColor) : (fenceInfo.LabelColor != 0 ? Color.FromArgb(fenceInfo.LabelColor) : Color.Black);
+            var currentBox = tab.BoxColor != 0 ? Color.FromArgb(tab.BoxColor) : (fenceInfo.BoxColor != 0 ? Color.FromArgb(fenceInfo.BoxColor) : Color.Black);
+            var dialog = new AppearanceDialog(currentAccent, fenceInfo.Opacity, currentLabel, currentBox);
+            dialog.Text = $"Tab Appearance — {tab.Name}";
+            dialog.TopMost = true;
+            if (dialog.ShowDialog(this) == DialogResult.OK)
+            {
+                tab.AccentColor = (dialog.AccentColor.ToArgb() == fenceInfo.AccentColor) ? 0 : dialog.AccentColor.ToArgb();
+                tab.LabelColor = (dialog.LabelColor.R == 0 && dialog.LabelColor.G == 0 && dialog.LabelColor.B == 0) ? 0 : dialog.LabelColor.ToArgb();
+                tab.BoxColor = (dialog.BoxColor.R == 0 && dialog.BoxColor.G == 0 && dialog.BoxColor.B == 0) ? 0 : dialog.BoxColor.ToArgb();
+                Refresh();
+                Save();
+            }
         }
 
         private readonly object saveLock = new object();
