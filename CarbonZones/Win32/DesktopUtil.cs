@@ -62,8 +62,15 @@ namespace CarbonZones.Win32
         [DllImport("user32.dll")]
         static extern IntPtr SendMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
 
-        private const uint LVM_ARRANGE = 0x1016;
-        private const int LVA_DEFAULT = 0x0000;
+        [DllImport("shell32.dll")]
+        static extern void SHChangeNotify(int wEventId, uint uFlags, IntPtr dwItem1, IntPtr dwItem2);
+
+        private const int SHCNE_ASSOCCHANGED = 0x08000000;
+        private const uint SHCNF_IDLIST = 0x0000;
+        private const uint SHCNF_FLUSH = 0x1000;
+
+        private const uint WM_COMMAND = 0x0111;
+        private const int REFRESH_COMMAND = 0x7103; // Shell DefView refresh
 
         public static void SetDesktopIconsVisible(bool visible)
         {
@@ -77,17 +84,18 @@ namespace CarbonZones.Win32
         }
 
         /// <summary>
-        /// Sends LVM_ARRANGE to the desktop ListView to force it to re-read item states.
+        /// Forces the desktop to fully refresh its icon view by sending the
+        /// shell DefView refresh command and flushing shell change notifications.
         /// </summary>
         public static void RefreshDesktopIcons()
         {
+            // Send the shell's DefView refresh command — same as pressing F5 on the desktop
             IntPtr defView = GetShellDefView();
-            if (defView == IntPtr.Zero) return;
+            if (defView != IntPtr.Zero)
+                SendMessage(defView, WM_COMMAND, (IntPtr)REFRESH_COMMAND, IntPtr.Zero);
 
-            IntPtr listView = FindWindowEx(defView, IntPtr.Zero, "SysListView32", null);
-            if (listView == IntPtr.Zero) return;
-
-            SendMessage(listView, LVM_ARRANGE, (IntPtr)LVA_DEFAULT, IntPtr.Zero);
+            // Nuclear flush — forces all shell windows to re-read file attributes
+            SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST | SHCNF_FLUSH, IntPtr.Zero, IntPtr.Zero);
         }
 
         private static IntPtr GetShellDefView()

@@ -267,6 +267,7 @@ namespace CarbonZones
             ActiveFiles.Remove(hoveringItem);
             hoveringItem = null;
             Save();
+            DesktopUtil.RefreshDesktopIcons();
             Refresh();
         }
 
@@ -336,6 +337,7 @@ namespace CarbonZones
             }
             dragOverTabIndex = -1;
             Save();
+            DesktopUtil.RefreshDesktopIcons();
             Refresh();
         }
 
@@ -411,13 +413,14 @@ namespace CarbonZones
                     dragOutItem = null;
                     DoDragDrop(data, DragDropEffects.Move | DragDropEffects.Copy);
 
-                    // If mouse ended outside the fence, remove item
+                    // If mouse ended outside the fence, remove item and unhide on desktop
                     var mousePos = PointToClient(Control.MousePosition);
                     if (!ClientRectangle.Contains(mousePos))
                     {
                         ShowDesktopIcon(itemPath);
                         ActiveFiles.Remove(itemPath);
                         Save();
+                        DesktopUtil.RefreshDesktopIcons();
                     }
                     Refresh();
                     return;
@@ -987,7 +990,6 @@ namespace CarbonZones
                 var attrs = File.GetAttributes(path);
                 File.SetAttributes(path, attrs | FileAttributes.Hidden | FileAttributes.System);
                 NotifyShell(path);
-                DesktopUtil.RefreshDesktopIcons();
             }
             catch { }
         }
@@ -999,7 +1001,6 @@ namespace CarbonZones
                 var attrs = File.GetAttributes(path);
                 File.SetAttributes(path, attrs & ~FileAttributes.Hidden & ~FileAttributes.System);
                 NotifyShell(path);
-                DesktopUtil.RefreshDesktopIcons();
             }
             catch { }
         }

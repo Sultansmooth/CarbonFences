@@ -82,6 +82,22 @@ namespace CarbonZones.Model
 
         public void RemoveFence(FenceInfo info)
         {
+            // Unhide all files in this fence before deleting it
+            var allFiles = new List<string>(info.Files);
+            foreach (var tab in info.Tabs)
+                allFiles.AddRange(tab.Files);
+            foreach (var filePath in allFiles)
+            {
+                try
+                {
+                    if (!File.Exists(filePath) && !Directory.Exists(filePath)) continue;
+                    var attrs = File.GetAttributes(filePath);
+                    File.SetAttributes(filePath, attrs & ~FileAttributes.Hidden & ~FileAttributes.System);
+                }
+                catch { }
+            }
+            DesktopUtil.RefreshDesktopIcons();
+
             Directory.Delete(GetFolderPath(info), true);
         }
 
@@ -97,8 +113,48 @@ namespace CarbonZones.Model
             writer.Close();
         }
 
+        /// <summary>
+        /// On startup, hide all files that are tracked by fences so they
+        /// don't appear on the desktop alongside the fence windows.
+        /// </summary>
+        public void HideAllFencedIcons()
+        {
+            foreach (var filePath in EnumerateAllFencedFiles())
+            {
+                try
+                {
+                    if (!File.Exists(filePath) && !Directory.Exists(filePath)) continue;
+                    var attrs = File.GetAttributes(filePath);
+                    File.SetAttributes(filePath, attrs | FileAttributes.Hidden | FileAttributes.System);
+                }
+                catch { }
+            }
+            DesktopUtil.RefreshDesktopIcons();
+        }
+
+        /// <summary>
+        /// On exit, unhide all files tracked by fences so the desktop
+        /// returns to its normal state.
+        /// </summary>
         public void UnhideAllDesktopIcons()
         {
+            foreach (var filePath in EnumerateAllFencedFiles())
+            {
+                try
+                {
+                    if (!File.Exists(filePath) && !Directory.Exists(filePath)) continue;
+                    var attrs = File.GetAttributes(filePath);
+                    File.SetAttributes(filePath, attrs & ~FileAttributes.Hidden & ~FileAttributes.System);
+                }
+                catch { }
+            }
+            DesktopUtil.RefreshDesktopIcons();
+            DesktopUtil.SetDesktopIconsVisible(true);
+        }
+
+        private List<string> EnumerateAllFencedFiles()
+        {
+            var allFiles = new List<string>();
             try
             {
                 foreach (var dir in Directory.EnumerateDirectories(basePath))
@@ -110,25 +166,13 @@ namespace CarbonZones.Model
                     var fence = serializer.Deserialize(reader) as FenceInfo;
                     if (fence == null) continue;
 
-                    var allFiles = new List<string>(fence.Files);
+                    allFiles.AddRange(fence.Files);
                     foreach (var tab in fence.Tabs)
                         allFiles.AddRange(tab.Files);
-
-                    foreach (var filePath in allFiles)
-                    {
-                        try
-                        {
-                            if (!File.Exists(filePath) && !Directory.Exists(filePath)) continue;
-                            var attrs = File.GetAttributes(filePath);
-                            File.SetAttributes(filePath, attrs & ~FileAttributes.Hidden & ~FileAttributes.System);
-                        }
-                        catch { }
-                    }
                 }
             }
             catch { }
-
-            DesktopUtil.SetDesktopIconsVisible(true);
+            return allFiles;
         }
 
         private void EnsureDirectoryExists(string dir)

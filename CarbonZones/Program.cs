@@ -23,6 +23,7 @@ namespace CarbonZones
                     Application.SetCompatibleTextRenderingDefault(false);
 
                     FenceManager.Instance.LoadFences();
+                    FenceManager.Instance.HideAllFencedIcons();
                     if (Application.OpenForms.Count == 0)
                         FenceManager.Instance.CreateFence("First fence");
 
