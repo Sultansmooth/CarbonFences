@@ -39,8 +39,28 @@ namespace CarbonZones.Win32
             {
                 Directory.CreateDirectory(StagingDir);
                 var staged = GetStagedPath(originalPath);
-                if (File.Exists(staged) || Directory.Exists(staged))
-                    return; // already staged
+                bool stagedExists = File.Exists(staged) || Directory.Exists(staged);
+                bool originalExists = File.Exists(originalPath) || Directory.Exists(originalPath);
+
+                if (stagedExists && originalExists)
+                {
+                    // Duplicate — file is in staging AND on desktop (e.g. OneDrive
+                    // restored it, or installer recreated a shortcut). Remove the
+                    // desktop copy since the staged version is the one we manage.
+                    try
+                    {
+                        if (File.Exists(originalPath))
+                            File.Delete(originalPath);
+                        else if (Directory.Exists(originalPath))
+                            Directory.Delete(originalPath, true);
+                    }
+                    catch { }
+                    return;
+                }
+
+                if (stagedExists)
+                    return; // already staged, no desktop copy
+
                 if (Directory.Exists(originalPath))
                     Directory.Move(originalPath, staged);
                 else if (File.Exists(originalPath))
