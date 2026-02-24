@@ -842,8 +842,13 @@ namespace CarbonZones
 
             int iconX = x + itemWidth / 2 - iconDrawSize / 2;
             using (var bmp = icon.ToBitmap())
-            using (var scaled = new Bitmap(bmp, iconDrawSize, iconDrawSize))
-                g.DrawImage(scaled, iconX, y);
+            {
+                g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+                g.DrawImage(bmp,
+                    new Rectangle(iconX, y, iconDrawSize, iconDrawSize),
+                    new Rectangle(0, 0, bmp.Width, bmp.Height),
+                    GraphicsUnit.Pixel);
+            }
             using (var shadowBrush = new SolidBrush(Color.FromArgb(180, 15, 15, 15)))
                 g.DrawString(name, iconFont, shadowBrush, new RectangleF(textPosition.Move(shadowDist, shadowDist), textMaxSize), stringFormat);
             g.DrawString(name, iconFont, Brushes.White, new RectangleF(textPosition, textMaxSize), stringFormat);
@@ -1029,10 +1034,11 @@ namespace CarbonZones
             // Ctrl+Scroll = resize icons
             if (ModifierKeys.HasFlag(Keys.Control))
             {
+                if (e is HandledMouseEventArgs hme) hme.Handled = true;
                 int step = Math.Sign(e.Delta) * 10;
                 fenceInfo.IconSize = Math.Clamp(fenceInfo.IconSize + step, 32, 96);
                 Save();
-                Invalidate();
+                Refresh();
                 return;
             }
 

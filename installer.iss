@@ -1,6 +1,6 @@
 [Setup]
 AppName=Carbon Zones
-AppVersion=1.0.12
+AppVersion=1.0.13
 AppPublisher=Sultansmooth
 AppPublisherURL=https://github.com/Sultansmooth/CarbonFences
 DefaultDirName={autopf}\Carbon Zones
