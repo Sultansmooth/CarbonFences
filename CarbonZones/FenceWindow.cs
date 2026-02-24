@@ -18,8 +18,8 @@ namespace CarbonZones
         private int logicalTitleHeight;
         private int titleHeight;
         private const int titleOffset = 3;
-        private const int itemWidth = 75;
-        private const int itemHeight = 32 + itemPadding + textHeight;
+        private int itemWidth => fenceInfo.IconSize;
+        private int itemHeight => (int)(itemWidth * 0.63f) + itemPadding + textHeight;
         private const int textHeight = 35;
         private const int itemPadding = 15;
         private const float shadowDist = 1.5f;
@@ -204,7 +204,7 @@ namespace CarbonZones
 
                 Invalidate(); // update hover state
                 if (hoveringItem != null && !ModifierKeys.HasFlag(Keys.Shift))
-                    shellContextMenu.ShowContextMenu(new[] { new FileInfo(FileStaging.GetEffectivePath(hoveringItem)) }, PointToScreen(pt));
+                    ShowShellContextMenuSafe(hoveringItem, PointToScreen(pt));
                 else
                     appContextMenu.Show(this, pt);
                 return;
@@ -631,6 +631,8 @@ namespace CarbonZones
 
             // Derive colors from accent + opacity
             var accent = Color.FromArgb(fenceInfo.AccentColor);
+            var boxBase = fenceInfo.BoxColor != 0 ? Color.FromArgb(fenceInfo.BoxColor) : Color.Black;
+            var labelBase = fenceInfo.LabelColor != 0 ? Color.FromArgb(fenceInfo.LabelColor) : Color.Black;
             float opacityScale = Math.Clamp(fenceInfo.Opacity, 0, 100) / 100f;
             int maxBgAlpha = (int)(255 * opacityScale);
             int idleBgAlpha = (int)(maxBgAlpha * 0.2f);
@@ -638,7 +640,7 @@ namespace CarbonZones
 
             // Background — transparent when idle, opaque on hover
             int bgAlpha = (int)(idleBgAlpha + deltaBgAlpha * hoverAlpha);
-            using (var bgBrush = new SolidBrush(Color.FromArgb(bgAlpha, Color.Black)))
+            using (var bgBrush = new SolidBrush(Color.FromArgb(bgAlpha, boxBase.R, boxBase.G, boxBase.B)))
                 g.FillRectangle(bgBrush, ClientRectangle);
 
             // Hover border glow — accent color
@@ -651,7 +653,7 @@ namespace CarbonZones
 
             // Title background, then text on top
             int titleAlpha = (int)((15 + 60 * hoverAlpha) * opacityScale);
-            using (var titleBgBrush = new SolidBrush(Color.FromArgb(titleAlpha, Color.Black)))
+            using (var titleBgBrush = new SolidBrush(Color.FromArgb(titleAlpha, labelBase.R, labelBase.G, labelBase.B)))
                 g.FillRectangle(titleBgBrush, new RectangleF(0, 0, Width, titleHeight));
             int textAlpha = (int)(60 + 195 * hoverAlpha);
             using (var titleBrush = new SolidBrush(Color.FromArgb(textAlpha, 255, 255, 255)))
@@ -660,7 +662,7 @@ namespace CarbonZones
 
             // Tab bar
             int tabBgAlpha = (int)((10 + 40 * hoverAlpha) * opacityScale);
-            using (var tabBgBrush = new SolidBrush(Color.FromArgb(tabBgAlpha, Color.Black)))
+            using (var tabBgBrush = new SolidBrush(Color.FromArgb(tabBgAlpha, labelBase.R, labelBase.G, labelBase.B)))
                 g.FillRectangle(tabBgBrush, new Rectangle(0, titleHeight, Width, scaledTabBarHeight));
 
             int tabX = 4;
@@ -987,13 +989,17 @@ namespace CarbonZones
 
         private void appearanceToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            var currentColor = Color.FromArgb(fenceInfo.AccentColor);
-            var dialog = new AppearanceDialog(currentColor, fenceInfo.Opacity);
+            var currentAccent = Color.FromArgb(fenceInfo.AccentColor);
+            var currentLabel = fenceInfo.LabelColor != 0 ? Color.FromArgb(fenceInfo.LabelColor) : Color.Black;
+            var currentBox = fenceInfo.BoxColor != 0 ? Color.FromArgb(fenceInfo.BoxColor) : Color.Black;
+            var dialog = new AppearanceDialog(currentAccent, fenceInfo.Opacity, currentLabel, currentBox);
             dialog.TopMost = true;
             if (dialog.ShowDialog(this) == DialogResult.OK)
             {
                 fenceInfo.AccentColor = dialog.AccentColor.ToArgb();
                 fenceInfo.Opacity = dialog.OpacityValue;
+                fenceInfo.LabelColor = (dialog.LabelColor.R == 0 && dialog.LabelColor.G == 0 && dialog.LabelColor.B == 0) ? 0 : dialog.LabelColor.ToArgb();
+                fenceInfo.BoxColor = (dialog.BoxColor.R == 0 && dialog.BoxColor.G == 0 && dialog.BoxColor.B == 0) ? 0 : dialog.BoxColor.ToArgb();
                 Refresh();
                 Save();
             }
@@ -1006,7 +1012,7 @@ namespace CarbonZones
 
             if (hoveringItem != null && !ModifierKeys.HasFlag(Keys.Shift))
             {
-                shellContextMenu.ShowContextMenu(new[] { new FileInfo(FileStaging.GetEffectivePath(hoveringItem)) }, MousePosition);
+                ShowShellContextMenuSafe(hoveringItem, MousePosition);
             }
             else
             {
@@ -1016,6 +1022,16 @@ namespace CarbonZones
 
         private void FenceWindow_MouseWheel(object sender, MouseEventArgs e)
         {
+            // Ctrl+Scroll = resize icons
+            if (ModifierKeys.HasFlag(Keys.Control))
+            {
+                int step = Math.Sign(e.Delta) * 5;
+                fenceInfo.IconSize = Math.Clamp(fenceInfo.IconSize + step, 50, 150);
+                Save();
+                Invalidate();
+                return;
+            }
+
             if (scrollHeight < 1)
                 return;
 
@@ -1036,6 +1052,60 @@ namespace CarbonZones
         private bool ItemExists(string path)
         {
             return File.Exists(path) || Directory.Exists(path);
+        }
+
+        /// <summary>
+        /// Shows the shell context menu for a fenced item, then checks if the
+        /// file was renamed or deleted via the menu. Updates the Files list
+        /// accordingly so items don't silently vanish.
+        /// </summary>
+        private void ShowShellContextMenuSafe(string originalPath, Point screenPos)
+        {
+            var effectivePath = FileStaging.GetEffectivePath(originalPath);
+            shellContextMenu.ShowContextMenu(new[] { new FileInfo(effectivePath) }, screenPos);
+
+            // After menu closes, check if the file was renamed or deleted
+            if (File.Exists(effectivePath) || Directory.Exists(effectivePath))
+                return; // still exists, nothing to fix
+
+            // File is gone at the effective path — try to find the renamed file
+            var stagingDir = Path.GetDirectoryName(FileStaging.GetStagedPath(originalPath));
+            if (stagingDir != null && Directory.Exists(stagingDir))
+            {
+                // Look for any file/folder in staging that doesn't match a known fenced path
+                var knownStaged = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var tab in fenceInfo.Tabs)
+                    foreach (var f in tab.Files)
+                        knownStaged.Add(FileStaging.GetStagedPath(f));
+
+                foreach (var entry in Directory.GetFileSystemEntries(stagingDir))
+                {
+                    if (!knownStaged.Contains(entry))
+                    {
+                        // Found the renamed file — update original path to new desktop name
+                        var newFileName = Path.GetFileName(entry);
+                        var newOriginalPath = Path.Combine(Path.GetDirectoryName(originalPath), newFileName);
+                        for (int t = 0; t < fenceInfo.Tabs.Count; t++)
+                        {
+                            int idx = fenceInfo.Tabs[t].Files.IndexOf(originalPath);
+                            if (idx >= 0)
+                            {
+                                fenceInfo.Tabs[t].Files[idx] = newOriginalPath;
+                                Save();
+                                Refresh();
+                                return;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // File was deleted via context menu — remove from fence
+            foreach (var tab in fenceInfo.Tabs)
+                tab.Files.Remove(originalPath);
+            hoveringItem = null;
+            Save();
+            Refresh();
         }
 
         private static void HideDesktopIcon(string path)

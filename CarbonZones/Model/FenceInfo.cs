@@ -46,6 +46,21 @@ namespace CarbonZones.Model
         /// </summary>
         public int Opacity { get; set; } = 60;
 
+        /// <summary>
+        /// Title bar background color as ARGB int. 0 = default black.
+        /// </summary>
+        public int LabelColor { get; set; } = 0;
+
+        /// <summary>
+        /// Fence body background color as ARGB int. 0 = default black.
+        /// </summary>
+        public int BoxColor { get; set; } = 0;
+
+        /// <summary>
+        /// Icon size in pixels (width). Default 75. Range 50–150.
+        /// </summary>
+        public int IconSize { get; set; } = 75;
+
         public List<string> Files { get; set; } = new List<string>();
 
         public List<FenceTab> Tabs { get; set; } = new List<FenceTab>();

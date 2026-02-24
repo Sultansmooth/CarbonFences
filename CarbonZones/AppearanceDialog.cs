@@ -20,86 +20,144 @@ namespace CarbonZones
             Color.FromArgb(140, 140, 140), // Gray
         };
 
-        private Color selectedColor;
+        private Color selectedAccent;
+        private Color selectedLabel;
+        private Color selectedBox;
         private readonly Panel[] swatchPanels;
+        private readonly Panel labelPreview;
+        private readonly Panel boxPreview;
         private readonly TrackBar opacityTrack;
         private readonly Label opacityLabel;
 
-        public Color AccentColor => selectedColor;
+        public Color AccentColor => selectedAccent;
+        public Color LabelColor => selectedLabel;
+        public Color BoxColor => selectedBox;
         public int OpacityValue => opacityTrack.Value;
 
-        public AppearanceDialog(Color currentColor, int currentOpacity)
+        public AppearanceDialog(Color currentAccent, int currentOpacity, Color currentLabel, Color currentBox)
         {
-            selectedColor = currentColor;
+            selectedAccent = currentAccent;
+            selectedLabel = currentLabel;
+            selectedBox = currentBox;
 
             Text = "Appearance";
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
             MinimizeBox = false;
             StartPosition = FormStartPosition.CenterParent;
-            Size = new Size(310, 250);
+            Size = new Size(310, 370);
             BackColor = Color.FromArgb(32, 32, 32);
             ForeColor = Color.White;
 
-            // Color label
-            var colorLabel = new Label
+            int y = 12;
+
+            // ── Accent Color ──
+            Controls.Add(new Label
             {
-                Text = "Accent Color",
-                Location = new Point(12, 12),
+                Text = "Accent Color (tabs / border)",
+                Location = new Point(12, y),
                 AutoSize = true,
                 ForeColor = Color.FromArgb(200, 200, 200)
-            };
-            Controls.Add(colorLabel);
+            });
+            y += 22;
 
-            // Color swatches — 5 per row, 2 rows
             swatchPanels = new Panel[Presets.Length];
             for (int i = 0; i < Presets.Length; i++)
             {
                 var swatch = new Panel
                 {
                     Size = new Size(28, 28),
-                    Location = new Point(12 + (i % 5) * 34, 34 + (i / 5) * 34),
+                    Location = new Point(12 + (i % 5) * 34, y + (i / 5) * 34),
                     BackColor = Presets[i],
                     Cursor = Cursors.Hand
                 };
                 int idx = i;
-                swatch.Click += (s, e) => SelectColor(Presets[idx]);
+                swatch.Click += (s, e) => SelectAccent(Presets[idx]);
                 swatch.Paint += SwatchPaint;
                 swatchPanels[i] = swatch;
                 Controls.Add(swatch);
             }
 
-            // Custom color button
-            var customBtn = new Button
-            {
-                Text = "Custom...",
-                Location = new Point(190, 34),
-                Size = new Size(90, 28),
-                FlatStyle = FlatStyle.Flat,
-                ForeColor = Color.White,
-                BackColor = Color.FromArgb(55, 55, 55)
-            };
-            customBtn.FlatAppearance.BorderColor = Color.FromArgb(80, 80, 80);
-            customBtn.Click += CustomColor_Click;
+            var customBtn = MakeButton("Custom...", new Point(190, y), new Size(90, 28));
+            customBtn.Click += (s, e) => PickColor(selectedAccent, c => SelectAccent(c));
             Controls.Add(customBtn);
 
-            // Opacity label
-            var opLabel = new Label
+            y += 74;
+
+            // ── Label Color ──
+            Controls.Add(new Label
             {
-                Text = "Opacity",
-                Location = new Point(12, 110),
+                Text = "Label Color (title bar)",
+                Location = new Point(12, y),
                 AutoSize = true,
                 ForeColor = Color.FromArgb(200, 200, 200)
-            };
-            Controls.Add(opLabel);
+            });
+            y += 22;
 
-            // Opacity track bar
+            labelPreview = new Panel
+            {
+                Size = new Size(28, 28),
+                Location = new Point(12, y),
+                BackColor = selectedLabel,
+                BorderStyle = BorderStyle.FixedSingle
+            };
+            Controls.Add(labelPreview);
+
+            var labelPickBtn = MakeButton("Pick...", new Point(48, y), new Size(70, 28));
+            labelPickBtn.Click += (s, e) => PickColor(selectedLabel, c => { selectedLabel = c; labelPreview.BackColor = c; });
+            Controls.Add(labelPickBtn);
+
+            var labelResetBtn = MakeButton("Reset", new Point(124, y), new Size(60, 28));
+            labelResetBtn.Click += (s, e) => { selectedLabel = Color.Black; labelPreview.BackColor = Color.Black; };
+            Controls.Add(labelResetBtn);
+
+            y += 38;
+
+            // ── Box Color ──
+            Controls.Add(new Label
+            {
+                Text = "Box Color (background)",
+                Location = new Point(12, y),
+                AutoSize = true,
+                ForeColor = Color.FromArgb(200, 200, 200)
+            });
+            y += 22;
+
+            boxPreview = new Panel
+            {
+                Size = new Size(28, 28),
+                Location = new Point(12, y),
+                BackColor = selectedBox,
+                BorderStyle = BorderStyle.FixedSingle
+            };
+            Controls.Add(boxPreview);
+
+            var boxPickBtn = MakeButton("Pick...", new Point(48, y), new Size(70, 28));
+            boxPickBtn.Click += (s, e) => PickColor(selectedBox, c => { selectedBox = c; boxPreview.BackColor = c; });
+            Controls.Add(boxPickBtn);
+
+            var boxResetBtn = MakeButton("Reset", new Point(124, y), new Size(60, 28));
+            boxResetBtn.Click += (s, e) => { selectedBox = Color.Black; boxPreview.BackColor = Color.Black; };
+            Controls.Add(boxResetBtn);
+
+            y += 38;
+
+            // ── Opacity ──
+            Controls.Add(new Label
+            {
+                Text = "Opacity",
+                Location = new Point(12, y),
+                AutoSize = true,
+                ForeColor = Color.FromArgb(200, 200, 200)
+            });
+            y += 22;
+
             opacityTrack = new TrackBar
             {
                 Minimum = 0,
                 Maximum = 100,
                 Value = Math.Clamp(currentOpacity, 0, 100),
-                Location = new Point(12, 132),
+                Location = new Point(12, y),
                 Size = new Size(200, 30),
                 TickFrequency = 10,
                 BackColor = Color.FromArgb(32, 32, 32)
@@ -107,51 +165,33 @@ namespace CarbonZones
             opacityTrack.Scroll += (s, e) => UpdateOpacityLabel();
             Controls.Add(opacityTrack);
 
-            // Opacity percentage label
             opacityLabel = new Label
             {
-                Location = new Point(218, 135),
+                Location = new Point(218, y + 3),
                 AutoSize = true,
                 ForeColor = Color.FromArgb(200, 200, 200)
             };
             Controls.Add(opacityLabel);
             UpdateOpacityLabel();
 
-            // OK button
-            var okBtn = new Button
-            {
-                Text = "OK",
-                DialogResult = DialogResult.OK,
-                Location = new Point(120, 175),
-                Size = new Size(80, 28),
-                FlatStyle = FlatStyle.Flat,
-                ForeColor = Color.White,
-                BackColor = Color.FromArgb(55, 55, 55)
-            };
-            okBtn.FlatAppearance.BorderColor = Color.FromArgb(80, 80, 80);
+            y += 40;
+
+            // ── OK / Cancel ──
+            var okBtn = MakeButton("OK", new Point(120, y), new Size(80, 28));
+            okBtn.DialogResult = DialogResult.OK;
             Controls.Add(okBtn);
 
-            // Cancel button
-            var cancelBtn = new Button
-            {
-                Text = "Cancel",
-                DialogResult = DialogResult.Cancel,
-                Location = new Point(210, 175),
-                Size = new Size(80, 28),
-                FlatStyle = FlatStyle.Flat,
-                ForeColor = Color.White,
-                BackColor = Color.FromArgb(55, 55, 55)
-            };
-            cancelBtn.FlatAppearance.BorderColor = Color.FromArgb(80, 80, 80);
+            var cancelBtn = MakeButton("Cancel", new Point(210, y), new Size(80, 28));
+            cancelBtn.DialogResult = DialogResult.Cancel;
             Controls.Add(cancelBtn);
 
             AcceptButton = okBtn;
             CancelButton = cancelBtn;
         }
 
-        private void SelectColor(Color color)
+        private void SelectAccent(Color color)
         {
-            selectedColor = color;
+            selectedAccent = color;
             foreach (var p in swatchPanels)
                 p.Invalidate();
         }
@@ -159,7 +199,7 @@ namespace CarbonZones
         private void SwatchPaint(object sender, PaintEventArgs e)
         {
             var panel = (Panel)sender;
-            if (ColorsMatch(panel.BackColor, selectedColor))
+            if (ColorsMatch(panel.BackColor, selectedAccent))
             {
                 using var pen = new Pen(Color.White, 2);
                 e.Graphics.DrawRectangle(pen, 1, 1, panel.Width - 3, panel.Height - 3);
@@ -171,20 +211,35 @@ namespace CarbonZones
             return a.R == b.R && a.G == b.G && a.B == b.B;
         }
 
-        private void CustomColor_Click(object sender, EventArgs e)
+        private void PickColor(Color current, Action<Color> onPicked)
         {
             using var dlg = new ColorDialog
             {
-                Color = selectedColor,
+                Color = current,
                 FullOpen = true
             };
             if (dlg.ShowDialog(this) == DialogResult.OK)
-                SelectColor(dlg.Color);
+                onPicked(dlg.Color);
         }
 
         private void UpdateOpacityLabel()
         {
             opacityLabel.Text = opacityTrack.Value + "%";
+        }
+
+        private static Button MakeButton(string text, Point location, Size size)
+        {
+            var btn = new Button
+            {
+                Text = text,
+                Location = location,
+                Size = size,
+                FlatStyle = FlatStyle.Flat,
+                ForeColor = Color.White,
+                BackColor = Color.FromArgb(55, 55, 55)
+            };
+            btn.FlatAppearance.BorderColor = Color.FromArgb(80, 80, 80);
+            return btn;
         }
     }
 }
