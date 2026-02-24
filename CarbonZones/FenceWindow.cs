@@ -841,8 +841,7 @@ namespace CarbonZones
             }
 
             var iconRect = new Rectangle(x + itemWidth / 2 - iconDrawSize / 2, y, iconDrawSize, iconDrawSize);
-            using (var bmp = icon.ToBitmap())
-                g.DrawImage(bmp, iconRect);
+            g.DrawIcon(icon, iconRect);
             using (var shadowBrush = new SolidBrush(Color.FromArgb(180, 15, 15, 15)))
                 g.DrawString(name, iconFont, shadowBrush, new RectangleF(textPosition.Move(shadowDist, shadowDist), textMaxSize), stringFormat);
             g.DrawString(name, iconFont, Brushes.White, new RectangleF(textPosition, textMaxSize), stringFormat);
@@ -1028,7 +1027,7 @@ namespace CarbonZones
             // Ctrl+Scroll = resize icons
             if (ModifierKeys.HasFlag(Keys.Control))
             {
-                int step = Math.Sign(e.Delta) * 5;
+                int step = Math.Sign(e.Delta) * 10;
                 fenceInfo.IconSize = Math.Clamp(fenceInfo.IconSize + step, 50, 150);
                 Save();
                 Invalidate();
