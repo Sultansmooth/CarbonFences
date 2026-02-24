@@ -18,8 +18,9 @@ namespace CarbonZones
         private int logicalTitleHeight;
         private int titleHeight;
         private const int titleOffset = 3;
-        private int itemWidth => fenceInfo.IconSize;
-        private int itemHeight => (int)(itemWidth * 0.63f) + itemPadding + textHeight;
+        private int iconDrawSize => fenceInfo.IconSize;
+        private int itemWidth => iconDrawSize + 30;
+        private int itemHeight => iconDrawSize + itemPadding + textHeight;
         private const int textHeight = 35;
         private const int itemPadding = 15;
         private const float shadowDist = 1.5f;
@@ -785,7 +786,6 @@ namespace CarbonZones
             var icon = entry.ExtractIcon(thumbnailProvider);
             var name = entry.Name;
 
-            int iconDrawSize = (int)(itemWidth * 0.63f);
             var textPosition = new PointF(x, y + iconDrawSize + 5);
             var textMaxSize = new SizeF(itemWidth, textHeight);
 
@@ -1028,7 +1028,7 @@ namespace CarbonZones
             if (ModifierKeys.HasFlag(Keys.Control))
             {
                 int step = Math.Sign(e.Delta) * 10;
-                fenceInfo.IconSize = Math.Clamp(fenceInfo.IconSize + step, 50, 150);
+                fenceInfo.IconSize = Math.Clamp(fenceInfo.IconSize + step, 32, 96);
                 Save();
                 Invalidate();
                 return;

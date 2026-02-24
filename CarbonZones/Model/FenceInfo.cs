@@ -57,9 +57,9 @@ namespace CarbonZones.Model
         public int BoxColor { get; set; } = 0;
 
         /// <summary>
-        /// Icon size in pixels (width). Default 75. Range 50–150.
+        /// Icon draw size in pixels. Default 48. Range 32–96.
         /// </summary>
-        public int IconSize { get; set; } = 75;
+        public int IconSize { get; set; } = 48;
 
         public List<string> Files { get; set; } = new List<string>();
 
