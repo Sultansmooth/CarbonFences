@@ -90,19 +90,13 @@ namespace CarbonZones.Model
 
         public void RemoveFence(FenceInfo info)
         {
-            // Unhide all files in this fence before deleting it
+            // Unstage all files in this fence before deleting it
             var allFiles = new List<string>(info.Files);
             foreach (var tab in info.Tabs)
                 allFiles.AddRange(tab.Files);
             foreach (var filePath in allFiles)
             {
-                try
-                {
-                    if (!File.Exists(filePath) && !Directory.Exists(filePath)) continue;
-                    var attrs = File.GetAttributes(filePath);
-                    File.SetAttributes(filePath, attrs & ~FileAttributes.Hidden & ~FileAttributes.System);
-                }
-                catch { }
+                Win32.FileStaging.Unstage(filePath);
             }
             DesktopUtil.RefreshDesktopIcons();
 
@@ -129,13 +123,7 @@ namespace CarbonZones.Model
         {
             foreach (var filePath in EnumerateAllFencedFiles())
             {
-                try
-                {
-                    if (!File.Exists(filePath) && !Directory.Exists(filePath)) continue;
-                    var attrs = File.GetAttributes(filePath);
-                    File.SetAttributes(filePath, attrs | FileAttributes.Hidden | FileAttributes.System);
-                }
-                catch { }
+                Win32.FileStaging.Stage(filePath);
             }
             DesktopUtil.RefreshDesktopIcons();
         }
@@ -148,13 +136,7 @@ namespace CarbonZones.Model
         {
             foreach (var filePath in EnumerateAllFencedFiles())
             {
-                try
-                {
-                    if (!File.Exists(filePath) && !Directory.Exists(filePath)) continue;
-                    var attrs = File.GetAttributes(filePath);
-                    File.SetAttributes(filePath, attrs & ~FileAttributes.Hidden & ~FileAttributes.System);
-                }
-                catch { }
+                Win32.FileStaging.Unstage(filePath);
             }
             DesktopUtil.RefreshDesktopIcons();
             DesktopUtil.SetDesktopIconsVisible(true);

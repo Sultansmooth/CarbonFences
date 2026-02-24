@@ -6,7 +6,6 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
-using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using static CarbonZones.Win32.WindowUtil;
 
@@ -204,7 +203,7 @@ namespace CarbonZones
 
                 Invalidate(); // update hover state
                 if (hoveringItem != null && !ModifierKeys.HasFlag(Keys.Shift))
-                    shellContextMenu.ShowContextMenu(new[] { new FileInfo(hoveringItem) }, PointToScreen(pt));
+                    shellContextMenu.ShowContextMenu(new[] { new FileInfo(FileStaging.GetEffectivePath(hoveringItem)) }, PointToScreen(pt));
                 else
                     appContextMenu.Show(this, pt);
                 return;
@@ -727,11 +726,12 @@ namespace CarbonZones
             g.Clip = new Region(new Rectangle(0, headerHeight, Width, Height - headerHeight));
             foreach (var file in ActiveFiles)
             {
-                var entry = FenceEntry.FromPath(file);
+                var effectivePath = FileStaging.GetEffectivePath(file);
+                var entry = FenceEntry.FromPath(effectivePath);
                 if (entry == null)
                     continue;
 
-                RenderEntry(g, entry, x, y + headerHeight - scrollOffset);
+                RenderEntry(g, entry, file, x, y + headerHeight - scrollOffset);
 
                 var itemBottom = y + itemHeight;
                 if (itemBottom > scrollHeight)
@@ -771,7 +771,7 @@ namespace CarbonZones
             hasHoverUpdated = false;
         }
 
-        private void RenderEntry(Graphics g, FenceEntry entry, int x, int y)
+        private void RenderEntry(Graphics g, FenceEntry entry, string originalPath, int x, int y)
         {
             var icon = entry.ExtractIcon(thumbnailProvider);
             var name = entry.Name;
@@ -790,13 +790,13 @@ namespace CarbonZones
 
             if (mouseOver)
             {
-                hoveringItem = entry.Path;
+                hoveringItem = originalPath;
                 hasHoverUpdated = true;
             }
 
             if (mouseOver && shouldUpdateSelection)
             {
-                selectedItem = entry.Path;
+                selectedItem = originalPath;
                 shouldUpdateSelection = false;
                 hasSelectionUpdated = true;
             }
@@ -807,7 +807,7 @@ namespace CarbonZones
                 entry.Open();
             }
 
-            if (selectedItem == entry.Path)
+            if (selectedItem == originalPath)
             {
                 using var borderPen = new Pen(Color.FromArgb(120, SystemColors.ActiveBorder));
                 g.DrawRectangle(borderPen, outlineRectInner);
@@ -999,7 +999,7 @@ namespace CarbonZones
 
             if (hoveringItem != null && !ModifierKeys.HasFlag(Keys.Shift))
             {
-                shellContextMenu.ShowContextMenu(new[] { new FileInfo(hoveringItem) }, MousePosition);
+                shellContextMenu.ShowContextMenu(new[] { new FileInfo(FileStaging.GetEffectivePath(hoveringItem)) }, MousePosition);
             }
             else
             {
@@ -1031,52 +1031,14 @@ namespace CarbonZones
             return File.Exists(path) || Directory.Exists(path);
         }
 
-        [DllImport("shell32.dll")]
-        private static extern void SHChangeNotify(int wEventId, uint uFlags, IntPtr dwItem1, IntPtr dwItem2);
-        private const int SHCNE_UPDATEITEM = 0x00002000;
-        private const int SHCNE_ATTRIBUTES = 0x00000800;
-        private const int SHCNE_UPDATEDIR = 0x00001000;
-        private const uint SHCNF_PATHW = 0x0005;
-
-        private static void NotifyShell(string path)
-        {
-            var ptr = Marshal.StringToHGlobalUni(path);
-            try
-            {
-                SHChangeNotify(SHCNE_UPDATEITEM, SHCNF_PATHW, ptr, IntPtr.Zero);
-                SHChangeNotify(SHCNE_ATTRIBUTES, SHCNF_PATHW, ptr, IntPtr.Zero);
-            }
-            finally { Marshal.FreeHGlobal(ptr); }
-
-            var dir = Path.GetDirectoryName(path);
-            if (dir != null)
-            {
-                var dirPtr = Marshal.StringToHGlobalUni(dir);
-                try { SHChangeNotify(SHCNE_UPDATEDIR, SHCNF_PATHW, dirPtr, IntPtr.Zero); }
-                finally { Marshal.FreeHGlobal(dirPtr); }
-            }
-        }
-
         private static void HideDesktopIcon(string path)
         {
-            try
-            {
-                var attrs = File.GetAttributes(path);
-                File.SetAttributes(path, attrs | FileAttributes.Hidden | FileAttributes.System);
-                NotifyShell(path);
-            }
-            catch { }
+            FileStaging.Stage(path);
         }
 
         private static void ShowDesktopIcon(string path)
         {
-            try
-            {
-                var attrs = File.GetAttributes(path);
-                File.SetAttributes(path, attrs & ~FileAttributes.Hidden & ~FileAttributes.System);
-                NotifyShell(path);
-            }
-            catch { }
+            FileStaging.Unstage(path);
         }
     }
 
