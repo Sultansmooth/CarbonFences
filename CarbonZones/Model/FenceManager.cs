@@ -33,6 +33,14 @@ namespace CarbonZones.Model
             fenceWindows.Remove(window);
         }
 
+        public FenceWindow GetFenceAtScreenPoint(Point screenPoint)
+        {
+            foreach (var w in fenceWindows)
+                if (w.Visible && w.Bounds.Contains(screenPoint))
+                    return w;
+            return null;
+        }
+
         public void ToggleFences()
         {
             fencesVisible = !fencesVisible;

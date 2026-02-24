@@ -44,8 +44,11 @@ namespace CarbonZones
         private int scrollHeight;
         private int scrollOffset;
 
-        private Point dragStartPoint;
-        private string dragOutItem;
+        // Internal drag-out state (replaces DoDragDrop)
+        private enum ItemDragState { None, Pending, Dragging }
+        private ItemDragState itemDragState;
+        private string dragItemPath;
+        private Point dragItemStart;
 
         // Tab state
         private int activeTabIndex = 0;
@@ -279,7 +282,7 @@ namespace CarbonZones
         private void FenceWindow_DragEnter(object sender, DragEventArgs e)
         {
             if (e.Data.GetDataPresent(DataFormats.FileDrop) && !lockedToolStripMenuItem.Checked)
-                e.Effect = DragDropEffects.Move;
+                e.Effect = DragDropEffects.Copy;
         }
 
         private void FenceWindow_DragOver(object sender, DragEventArgs e)
@@ -370,8 +373,13 @@ namespace CarbonZones
                     }
                 }
 
-                dragStartPoint = e.Location;
-                dragOutItem = hoveringItem;
+                // Start potential item drag (internal capture, no DoDragDrop)
+                if (hoveringItem != null && !lockedToolStripMenuItem.Checked)
+                {
+                    itemDragState = ItemDragState.Pending;
+                    dragItemPath = hoveringItem;
+                    dragItemStart = e.Location;
+                }
             }
         }
 
@@ -402,41 +410,107 @@ namespace CarbonZones
                 return;
             }
 
-            // Drag item out of fence
-            if (e.Button == MouseButtons.Left && dragOutItem != null && !lockedToolStripMenuItem.Checked)
+            // Internal item drag — mouse capture based (no DoDragDrop)
+            if (e.Button == MouseButtons.Left && itemDragState == ItemDragState.Pending)
             {
-                if (Math.Abs(e.X - dragStartPoint.X) > SystemInformation.DragSize.Width ||
-                    Math.Abs(e.Y - dragStartPoint.Y) > SystemInformation.DragSize.Height)
+                if (Math.Abs(e.X - dragItemStart.X) > SystemInformation.DragSize.Width ||
+                    Math.Abs(e.Y - dragItemStart.Y) > SystemInformation.DragSize.Height)
                 {
-                    var data = new DataObject(DataFormats.FileDrop, new[] { dragOutItem });
-                    var itemPath = dragOutItem;
-                    dragOutItem = null;
-                    DoDragDrop(data, DragDropEffects.Move | DragDropEffects.Copy);
-
-                    // If mouse ended outside the fence, remove item and unhide on desktop
-                    var mousePos = PointToClient(Control.MousePosition);
-                    if (!ClientRectangle.Contains(mousePos))
-                    {
-                        ShowDesktopIcon(itemPath);
-                        ActiveFiles.Remove(itemPath);
-                        Save();
-                        DesktopUtil.RefreshDesktopIcons();
-                    }
-                    Refresh();
-                    return;
+                    itemDragState = ItemDragState.Dragging;
+                    Capture = true;
+                    Cursor = Cursors.Hand;
                 }
             }
+
             Invalidate();
         }
 
         private void FenceWindow_MouseUp(object sender, MouseEventArgs e)
         {
+            // Tab drag reorder finish
             if (draggingTabIndex >= 0)
             {
                 if (tabWasDragged)
                     Save();
                 draggingTabIndex = -1;
             }
+
+            // Item drag resolution
+            if (itemDragState == ItemDragState.Dragging && dragItemPath != null)
+            {
+                Capture = false;
+                Cursor = Cursors.Default;
+
+                var screenPos = Control.MousePosition;
+                var clientPos = PointToClient(screenPos);
+
+                // Check if dropped on another fence
+                var targetFence = FenceManager.Instance.GetFenceAtScreenPoint(screenPos);
+
+                if (targetFence != null && targetFence != this)
+                {
+                    // Inter-fence transfer
+                    targetFence.AcceptItem(dragItemPath);
+                    ActiveFiles.Remove(dragItemPath);
+                    Save();
+                }
+                else if (ClientRectangle.Contains(clientPos))
+                {
+                    // Dropped back on same fence — check if on a different tab
+                    if (clientPos.Y >= titleHeight && clientPos.Y < headerHeight)
+                    {
+                        int targetTab = GetTabIndexAtPoint(clientPos);
+                        if (targetTab >= 0 && targetTab != activeTabIndex)
+                        {
+                            ActiveFiles.Remove(dragItemPath);
+                            fenceInfo.Tabs[targetTab].Files.Add(dragItemPath);
+                            Save();
+                        }
+                    }
+                    // else: same tab area or content area — cancel, item stays
+                }
+                else
+                {
+                    // Dropped on desktop (or outside any fence) — unhide and remove
+                    ShowDesktopIcon(dragItemPath);
+                    ActiveFiles.Remove(dragItemPath);
+                    Save();
+                    DesktopUtil.RefreshDesktopIcons();
+                }
+
+                itemDragState = ItemDragState.None;
+                dragItemPath = null;
+                Refresh();
+                return;
+            }
+
+            // Pending drag that never crossed threshold — just reset
+            if (itemDragState == ItemDragState.Pending)
+            {
+                itemDragState = ItemDragState.None;
+                dragItemPath = null;
+            }
+        }
+
+        protected override void OnMouseCaptureChanged(EventArgs e)
+        {
+            if (itemDragState == ItemDragState.Dragging)
+            {
+                // Capture lost unexpectedly (Alt+Tab, another app, etc.) — cancel drag
+                itemDragState = ItemDragState.None;
+                dragItemPath = null;
+                Cursor = Cursors.Default;
+                Refresh();
+            }
+            base.OnMouseCaptureChanged(e);
+        }
+
+        public void AcceptItem(string filePath)
+        {
+            if (lockedToolStripMenuItem.Checked) return;
+            ActiveFiles.Add(filePath);
+            Save();
+            Refresh();
         }
 
         private void HoverTimer_Tick(object sender, EventArgs e)
