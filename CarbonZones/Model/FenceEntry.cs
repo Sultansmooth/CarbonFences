@@ -46,6 +46,23 @@ namespace CarbonZones.Model
             }
         }
 
+        public Bitmap ExtractLargeIcon(ThumbnailProvider thumbnailProvider)
+        {
+            if (Type == EntryType.File)
+            {
+                if (thumbnailProvider.IsSupported(Path))
+                {
+                    var icon = thumbnailProvider.GenerateThumbnail(Path);
+                    return icon?.ToBitmap();
+                }
+                return IconUtil.GetJumboIcon(Path);
+            }
+            else
+            {
+                return IconUtil.GetFolderJumbo();
+            }
+        }
+
         public void Open()
         {
             Task.Run(() =>

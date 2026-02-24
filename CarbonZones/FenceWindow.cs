@@ -783,7 +783,7 @@ namespace CarbonZones
 
         private void RenderEntry(Graphics g, FenceEntry entry, string originalPath, int x, int y)
         {
-            var icon = entry.ExtractIcon(thumbnailProvider);
+            var largeBmp = entry.ExtractLargeIcon(thumbnailProvider);
             var name = entry.Name;
 
             var textPosition = new PointF(x, y + iconDrawSize + 5);
@@ -841,13 +841,25 @@ namespace CarbonZones
             }
 
             int iconX = x + itemWidth / 2 - iconDrawSize / 2;
-            using (var bmp = icon.ToBitmap())
+            if (largeBmp != null)
             {
                 g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
-                g.DrawImage(bmp,
+                g.DrawImage(largeBmp,
                     new Rectangle(iconX, y, iconDrawSize, iconDrawSize),
-                    new Rectangle(0, 0, bmp.Width, bmp.Height),
+                    new Rectangle(0, 0, largeBmp.Width, largeBmp.Height),
                     GraphicsUnit.Pixel);
+            }
+            else
+            {
+                var icon = entry.ExtractIcon(thumbnailProvider);
+                using (var bmp = icon.ToBitmap())
+                {
+                    g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+                    g.DrawImage(bmp,
+                        new Rectangle(iconX, y, iconDrawSize, iconDrawSize),
+                        new Rectangle(0, 0, bmp.Width, bmp.Height),
+                        GraphicsUnit.Pixel);
+                }
             }
             using (var shadowBrush = new SolidBrush(Color.FromArgb(180, 15, 15, 15)))
                 g.DrawString(name, iconFont, shadowBrush, new RectangleF(textPosition.Move(shadowDist, shadowDist), textMaxSize), stringFormat);
