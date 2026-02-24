@@ -785,13 +785,14 @@ namespace CarbonZones
             var icon = entry.ExtractIcon(thumbnailProvider);
             var name = entry.Name;
 
-            var textPosition = new PointF(x, y + icon.Height + 5);
+            int iconDrawSize = (int)(itemWidth * 0.63f);
+            var textPosition = new PointF(x, y + iconDrawSize + 5);
             var textMaxSize = new SizeF(itemWidth, textHeight);
 
             using var stringFormat = new StringFormat { Alignment = StringAlignment.Center, Trimming = StringTrimming.EllipsisCharacter };
 
             var textSize = g.MeasureString(name, iconFont, textMaxSize, stringFormat);
-            var outlineRect = new Rectangle(x - 2, y - 2, itemWidth + 2, icon.Height + (int)textSize.Height + 5 + 2);
+            var outlineRect = new Rectangle(x - 2, y - 2, itemWidth + 2, iconDrawSize + (int)textSize.Height + 5 + 2);
             var outlineRectInner = outlineRect.Shrink(1);
 
             var mousePos = PointToClient(MousePosition);
@@ -839,7 +840,9 @@ namespace CarbonZones
                 g.FillRectangle(fillBrush, outlineRect);
             }
 
-            g.DrawIcon(icon, x + itemWidth / 2 - icon.Width / 2, y);
+            var iconRect = new Rectangle(x + itemWidth / 2 - iconDrawSize / 2, y, iconDrawSize, iconDrawSize);
+            using (var bmp = icon.ToBitmap())
+                g.DrawImage(bmp, iconRect);
             using (var shadowBrush = new SolidBrush(Color.FromArgb(180, 15, 15, 15)))
                 g.DrawString(name, iconFont, shadowBrush, new RectangleF(textPosition.Move(shadowDist, shadowDist), textMaxSize), stringFormat);
             g.DrawString(name, iconFont, Brushes.White, new RectangleF(textPosition, textMaxSize), stringFormat);
