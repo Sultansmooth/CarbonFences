@@ -51,6 +51,9 @@ namespace CarbonZones
         private int activeTabIndex = 0;
         private int hoveringTabIndex = -1;
         private int dragOverTabIndex = -1;
+        private int draggingTabIndex = -1;
+        private Point tabDragStartPoint;
+        private bool tabWasDragged;
         private const int tabBarHeight = 24;
         private int scaledTabBarHeight;
         private const int tabPadding = 6;
@@ -97,6 +100,7 @@ namespace CarbonZones
 
             this.MouseWheel += FenceWindow_MouseWheel;
             this.MouseDown += FenceWindow_MouseDown;
+            this.MouseUp += FenceWindow_MouseUp;
             thumbnailProvider.IconThumbnailLoaded += ThumbnailProvider_IconThumbnailLoaded;
             hoverTimer.Tick += HoverTimer_Tick;
 
@@ -145,11 +149,15 @@ namespace CarbonZones
                 return;
             }
 
-            // Mouse leave
+            // Mouse leave (WM_NCMOUSELEAVE — fires when leaving the non-client/title area)
             var myrect = new Rectangle(Location, Size);
             if (m.Msg == 0x02a2 && !myrect.IntersectsWith(new Rectangle(MousePosition, new Size(1, 1))))
             {
+                isMouseOver = false;
+                hoverTimer.Start();
                 Minify();
+                selectedItem = null;
+                Refresh();
             }
 
             // Prevent maximize
@@ -347,6 +355,19 @@ namespace CarbonZones
         {
             if (e.Button == MouseButtons.Left)
             {
+                // Check if mousedown is on a tab (for tab reordering)
+                if (e.Y >= titleHeight && e.Y < headerHeight)
+                {
+                    int tabIdx = GetTabIndexAtPoint(e.Location);
+                    if (tabIdx >= 0)
+                    {
+                        draggingTabIndex = tabIdx;
+                        tabDragStartPoint = e.Location;
+                        tabWasDragged = false;
+                        return;
+                    }
+                }
+
                 dragStartPoint = e.Location;
                 dragOutItem = hoveringItem;
             }
@@ -354,6 +375,31 @@ namespace CarbonZones
 
         private void FenceWindow_MouseMove(object sender, MouseEventArgs e)
         {
+            // Tab drag reordering
+            if (e.Button == MouseButtons.Left && draggingTabIndex >= 0)
+            {
+                if (Math.Abs(e.X - tabDragStartPoint.X) > SystemInformation.DragSize.Width)
+                {
+                    int targetIdx = GetTabIndexAtPoint(e.Location);
+                    if (targetIdx >= 0 && targetIdx != draggingTabIndex)
+                    {
+                        var tab = fenceInfo.Tabs[draggingTabIndex];
+                        fenceInfo.Tabs.RemoveAt(draggingTabIndex);
+                        fenceInfo.Tabs.Insert(targetIdx, tab);
+                        if (activeTabIndex == draggingTabIndex)
+                            activeTabIndex = targetIdx;
+                        else if (draggingTabIndex < activeTabIndex && targetIdx >= activeTabIndex)
+                            activeTabIndex--;
+                        else if (draggingTabIndex > activeTabIndex && targetIdx <= activeTabIndex)
+                            activeTabIndex++;
+                        draggingTabIndex = targetIdx;
+                        tabWasDragged = true;
+                        Invalidate();
+                    }
+                }
+                return;
+            }
+
             // Drag item out of fence
             if (e.Button == MouseButtons.Left && dragOutItem != null && !lockedToolStripMenuItem.Checked)
             {
@@ -378,6 +424,16 @@ namespace CarbonZones
                 }
             }
             Invalidate();
+        }
+
+        private void FenceWindow_MouseUp(object sender, MouseEventArgs e)
+        {
+            if (draggingTabIndex >= 0)
+            {
+                if (tabWasDragged)
+                    Save();
+                draggingTabIndex = -1;
+            }
         }
 
         private void HoverTimer_Tick(object sender, EventArgs e)
@@ -445,6 +501,13 @@ namespace CarbonZones
 
         private void FenceWindow_Click(object sender, EventArgs e)
         {
+            // Skip tab switch if we just finished a tab drag
+            if (tabWasDragged)
+            {
+                tabWasDragged = false;
+                return;
+            }
+
             var mousePos = PointToClient(MousePosition);
 
             // Check if click is in tab bar area
@@ -876,10 +939,6 @@ namespace CarbonZones
         private const int SHCNE_UPDATEDIR = 0x00001000;
         private const uint SHCNF_PATHW = 0x0005;
 
-        [DllImport("shell32.dll")]
-        private static extern int SHGetKnownFolderPath([MarshalAs(UnmanagedType.LPStruct)] Guid rfid, uint dwFlags, IntPtr hToken, out IntPtr ppszPath);
-        private static readonly Guid FOLDERID_Desktop = new Guid("B4BFCC3A-DB2C-424C-B029-7FE99A87C641");
-
         private static void NotifyShell(string path)
         {
             var ptr = Marshal.StringToHGlobalUni(path);
@@ -901,7 +960,6 @@ namespace CarbonZones
 
         private static void HideDesktopIcon(string path)
         {
-            if (!IsDesktopPath(path)) return;
             try
             {
                 var attrs = File.GetAttributes(path);
@@ -914,7 +972,6 @@ namespace CarbonZones
 
         private static void ShowDesktopIcon(string path)
         {
-            if (!IsDesktopPath(path)) return;
             try
             {
                 var attrs = File.GetAttributes(path);
@@ -923,29 +980,6 @@ namespace CarbonZones
                 NotifyShell(path);
             }
             catch { }
-        }
-
-        private static bool IsDesktopPath(string path)
-        {
-            var dir = Path.GetDirectoryName(path);
-            if (dir == null) return false;
-            var userDesktop = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
-            var publicDesktop = Environment.GetFolderPath(Environment.SpecialFolder.CommonDesktopDirectory);
-
-            if (string.Equals(dir, userDesktop, StringComparison.OrdinalIgnoreCase)
-                || string.Equals(dir, publicDesktop, StringComparison.OrdinalIgnoreCase))
-                return true;
-
-            // Also check via SHGetKnownFolderPath (handles OneDrive-redirected desktops)
-            if (SHGetKnownFolderPath(FOLDERID_Desktop, 0, IntPtr.Zero, out var pPath) == 0)
-            {
-                var knownDesktop = Marshal.PtrToStringUni(pPath);
-                Marshal.FreeCoTaskMem(pPath);
-                if (knownDesktop != null && string.Equals(dir, knownDesktop, StringComparison.OrdinalIgnoreCase))
-                    return true;
-            }
-
-            return false;
         }
     }
 
