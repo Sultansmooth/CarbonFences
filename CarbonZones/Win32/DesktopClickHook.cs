@@ -75,6 +75,50 @@ namespace CarbonZones.Win32
         [return: MarshalAs(UnmanagedType.Bool)]
         private static extern bool IsWindowVisible(IntPtr hWnd);
 
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern IntPtr FindWindow(string lpClassName, string lpWindowName);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern IntPtr FindWindowEx(IntPtr parentHandle, IntPtr childAfter, string className, string windowTitle);
+
+        private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr SendMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
+
+        [DllImport("user32.dll")]
+        private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+
+        [DllImport("kernel32.dll")]
+        private static extern IntPtr OpenProcess(uint dwDesiredAccess, bool bInheritHandle, uint dwProcessId);
+
+        [DllImport("kernel32.dll")]
+        private static extern IntPtr VirtualAllocEx(IntPtr hProcess, IntPtr lpAddress, uint dwSize, uint flAllocationType, uint flProtect);
+
+        [DllImport("kernel32.dll")]
+        private static extern bool VirtualFreeEx(IntPtr hProcess, IntPtr lpAddress, uint dwSize, uint dwFreeType);
+
+        [DllImport("kernel32.dll")]
+        private static extern bool WriteProcessMemory(IntPtr hProcess, IntPtr lpBaseAddress, byte[] lpBuffer, uint nSize, out int lpNumberOfBytesWritten);
+
+        [DllImport("kernel32.dll")]
+        private static extern bool ReadProcessMemory(IntPtr hProcess, IntPtr lpBaseAddress, byte[] lpBuffer, uint nSize, out int lpNumberOfBytesRead);
+
+        [DllImport("kernel32.dll")]
+        private static extern bool CloseHandle(IntPtr hObject);
+
+        private const uint LVM_HITTEST = 0x1012;
+        private const uint PROCESS_VM_OPERATION = 0x0008;
+        private const uint PROCESS_VM_READ = 0x0010;
+        private const uint PROCESS_VM_WRITE = 0x0020;
+        private const uint MEM_COMMIT = 0x1000;
+        private const uint MEM_RELEASE = 0x8000;
+        private const uint PAGE_READWRITE = 0x04;
+
         private const int VK_MENU = 0x12; // Alt key
 
         private IntPtr hookId = IntPtr.Zero;
@@ -200,8 +244,96 @@ namespace CarbonZones.Win32
             var sb = new StringBuilder(64);
             GetClassName(hwnd, sb, sb.Capacity);
             var className = sb.ToString();
-            return className == "Progman" || className == "WorkerW"
-                || className == "SysListView32" || className == "SHELLDLL_DefView";
+            if (className != "Progman" && className != "WorkerW"
+                && className != "SysListView32" && className != "SHELLDLL_DefView")
+                return false;
+
+            // It's the desktop — but only count as empty space if no icon was hit
+            return !IsDesktopIconAtPoint(pt);
+        }
+
+        /// <summary>
+        /// Uses LVM_HITTEST on the desktop SysListView32 to check if a screen
+        /// point lands on an actual desktop icon. The ListView lives in
+        /// explorer.exe, so we must allocate memory in that process.
+        /// </summary>
+        private static bool IsDesktopIconAtPoint(POINT screenPt)
+        {
+            try
+            {
+                IntPtr listView = GetDesktopListView();
+                if (listView == IntPtr.Zero) return false;
+
+                // Convert screen coords to ListView client coords
+                GetWindowRect(listView, out var lvRect);
+                int localX = screenPt.x - lvRect.Left;
+                int localY = screenPt.y - lvRect.Top;
+
+                // LVHITTESTINFO struct: POINT pt (8 bytes) + uint flags (4) + int iItem (4) + ...
+                // We only need 16 bytes for the basic hit test
+                const int structSize = 16;
+                byte[] buffer = new byte[structSize];
+                BitConverter.GetBytes(localX).CopyTo(buffer, 0);
+                BitConverter.GetBytes(localY).CopyTo(buffer, 4);
+
+                GetWindowThreadProcessId(listView, out uint pid);
+                IntPtr hProcess = OpenProcess(PROCESS_VM_OPERATION | PROCESS_VM_READ | PROCESS_VM_WRITE, false, pid);
+                if (hProcess == IntPtr.Zero) return false;
+
+                try
+                {
+                    IntPtr remoteMem = VirtualAllocEx(hProcess, IntPtr.Zero, (uint)structSize, MEM_COMMIT, PAGE_READWRITE);
+                    if (remoteMem == IntPtr.Zero) return false;
+
+                    try
+                    {
+                        WriteProcessMemory(hProcess, remoteMem, buffer, (uint)structSize, out _);
+                        SendMessage(listView, LVM_HITTEST, IntPtr.Zero, remoteMem);
+                        ReadProcessMemory(hProcess, remoteMem, buffer, (uint)structSize, out _);
+
+                        int iItem = BitConverter.ToInt32(buffer, 12);
+                        return iItem >= 0; // >= 0 means an icon was hit
+                    }
+                    finally
+                    {
+                        VirtualFreeEx(hProcess, remoteMem, 0, MEM_RELEASE);
+                    }
+                }
+                finally
+                {
+                    CloseHandle(hProcess);
+                }
+            }
+            catch
+            {
+                return false; // On any error, assume empty space
+            }
+        }
+
+        private static IntPtr GetDesktopListView()
+        {
+            IntPtr progman = FindWindow("Progman", null);
+            IntPtr defView = FindWindowEx(progman, IntPtr.Zero, "SHELLDLL_DefView", null);
+            if (defView == IntPtr.Zero)
+            {
+                EnumWindows((hwnd, lParam) =>
+                {
+                    var sb = new StringBuilder(64);
+                    GetClassName(hwnd, sb, 64);
+                    if (sb.ToString() == "WorkerW")
+                    {
+                        IntPtr shell = FindWindowEx(hwnd, IntPtr.Zero, "SHELLDLL_DefView", null);
+                        if (shell != IntPtr.Zero)
+                        {
+                            defView = shell;
+                            return false;
+                        }
+                    }
+                    return true;
+                }, IntPtr.Zero);
+            }
+            if (defView == IntPtr.Zero) return IntPtr.Zero;
+            return FindWindowEx(defView, IntPtr.Zero, "SysListView32", null);
         }
 
         public void Dispose()
