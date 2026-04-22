@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
+using System.Linq;
 using System.Windows.Forms;
 using static CarbonZones.Win32.WindowUtil;
 
@@ -50,6 +51,15 @@ namespace CarbonZones
         private ItemDragState itemDragState;
         private string dragItemPath;
         private Point dragItemStart;
+
+        // Live drop feedback while dragging an item within this fence.
+        // dragDropSlotIndex: -1 = none, otherwise insertion index in ActiveFiles (0..Count).
+        // dragTargetFolder: path key of a folder entry the cursor is directly over.
+        private int dragDropSlotIndex = -1;
+        private string dragTargetFolder;
+
+        // Captured during Paint so hit-testing uses the exact rendered layout.
+        private readonly List<Rectangle> itemLayoutRects = new List<Rectangle>();
 
         // Tab state
         private int activeTabIndex = 0;
@@ -293,6 +303,7 @@ namespace CarbonZones
         {
             deleteItemToolStripMenuItem.Visible = hoveringItem != null;
             addFolderToolStripMenuItem.Visible = hoveringItem == null;
+            newFolderToolStripMenuItem.Visible = hoveringItem == null;
         }
 
         private void addFolderToolStripMenuItem_Click(object sender, EventArgs e)
@@ -306,6 +317,59 @@ namespace CarbonZones
                 Save();
                 Refresh();
             }
+        }
+
+        private void newFolderToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            if (lockedToolStripMenuItem.Checked) return;
+
+            var dialog = new EditDialog("New Folder");
+            dialog.TopMost = true;
+            if (dialog.ShowDialog(this) != DialogResult.OK) return;
+
+            var rawName = (dialog.NewName ?? "").Trim();
+            if (string.IsNullOrEmpty(rawName)) return;
+
+            // Strip characters Windows forbids in file/folder names.
+            var invalid = Path.GetInvalidFileNameChars();
+            var sanitized = new string(rawName.Where(c => Array.IndexOf(invalid, c) < 0).ToArray()).Trim();
+            if (string.IsNullOrEmpty(sanitized)) return;
+
+            var zoneRoot = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+                "Carbon Zones",
+                SanitizeForPath(fenceInfo.Name));
+            var target = Path.Combine(zoneRoot, sanitized);
+
+            // Disambiguate if a folder with that name already exists in this zone root.
+            int suffix = 2;
+            while (Directory.Exists(target))
+            {
+                target = Path.Combine(zoneRoot, $"{sanitized} ({suffix++})");
+            }
+
+            try
+            {
+                Directory.CreateDirectory(target);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, $"Could not create folder:\n{ex.Message}", "New Folder",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            ActiveFiles.Add(target);
+            Save();
+            Refresh();
+        }
+
+        private static string SanitizeForPath(string name)
+        {
+            if (string.IsNullOrWhiteSpace(name)) return "Zone";
+            var invalid = Path.GetInvalidFileNameChars();
+            var cleaned = new string(name.Where(c => Array.IndexOf(invalid, c) < 0).ToArray()).Trim();
+            return string.IsNullOrEmpty(cleaned) ? "Zone" : cleaned;
         }
 
         private void FenceWindow_DragEnter(object sender, DragEventArgs e)
@@ -451,7 +515,73 @@ namespace CarbonZones
                 }
             }
 
+            // While dragging an item, compute live drop feedback (folder target or
+            // insertion slot) so the user can see where the drop will land.
+            if (itemDragState == ItemDragState.Dragging && dragItemPath != null)
+            {
+                UpdateDragDropFeedback(e.Location);
+            }
+
             Invalidate();
+        }
+
+        private void UpdateDragDropFeedback(Point clientPos)
+        {
+            string newFolder = null;
+            int newSlot = -1;
+
+            bool inContentArea = clientPos.Y >= headerHeight && ClientRectangle.Contains(clientPos);
+            if (inContentArea)
+            {
+                // Folder highlight takes priority: if the cursor is over a folder entry
+                // that isn't the one being dragged, that's a "move into folder" target.
+                if (!string.IsNullOrEmpty(hoveringItem) &&
+                    hoveringItem != dragItemPath &&
+                    Directory.Exists(FileStaging.GetEffectivePath(hoveringItem)))
+                {
+                    newFolder = hoveringItem;
+                }
+                else
+                {
+                    newSlot = GetInsertSlotAtPoint(clientPos);
+                }
+            }
+
+            if (newFolder != dragTargetFolder || newSlot != dragDropSlotIndex)
+            {
+                dragTargetFolder = newFolder;
+                dragDropSlotIndex = newSlot;
+                Invalidate();
+            }
+        }
+
+        /// <summary>
+        /// Returns the insertion index within ActiveFiles that corresponds to the
+        /// given client-space point. Uses the rectangles captured during the last Paint.
+        /// Returns ActiveFiles.Count when the point is past the end.
+        /// </summary>
+        private int GetInsertSlotAtPoint(Point p)
+        {
+            if (itemLayoutRects.Count == 0)
+                return 0;
+
+            // Find the closest cell center, then decide "before" or "after" by X.
+            int bestIdx = -1;
+            double bestDist = double.MaxValue;
+            for (int i = 0; i < itemLayoutRects.Count; i++)
+            {
+                var r = itemLayoutRects[i];
+                double dx = p.X - (r.X + r.Width / 2.0);
+                double dy = p.Y - (r.Y + r.Height / 2.0);
+                double d = dx * dx + dy * dy;
+                if (d < bestDist) { bestDist = d; bestIdx = i; }
+            }
+
+            if (bestIdx < 0) return itemLayoutRects.Count;
+
+            var best = itemLayoutRects[bestIdx];
+            var centerX = best.X + best.Width / 2;
+            return (p.X < centerX) ? bestIdx : bestIdx + 1;
         }
 
         private void FenceWindow_MouseUp(object sender, MouseEventArgs e)
@@ -473,6 +603,8 @@ namespace CarbonZones
                 var droppedPath = dragItemPath;
                 itemDragState = ItemDragState.None;
                 dragItemPath = null;
+                dragDropSlotIndex = -1;
+                dragTargetFolder = null;
 
                 Capture = false;
                 Cursor = Cursors.Default;
@@ -503,22 +635,34 @@ namespace CarbonZones
                             Save();
                         }
                     }
-                    else if (!string.IsNullOrEmpty(hoveringItem) && hoveringItem != droppedPath && Directory.Exists(hoveringItem))
+                    else if (!string.IsNullOrEmpty(hoveringItem) &&
+                             hoveringItem != droppedPath &&
+                             Directory.Exists(FileStaging.GetEffectivePath(hoveringItem)))
                     {
-                        // Dropped onto a folder entry — move the file into that folder on disk
-                        var destPath = Path.Combine(hoveringItem, Path.GetFileName(droppedPath));
-                        try
+                        // Dropped onto a folder entry — move the source into that folder on disk.
+                        // Use effective paths so staged items (which live under __staged) work.
+                        if (TryMoveItemIntoFolder(droppedPath, hoveringItem))
                         {
-                            File.Move(droppedPath, destPath);
                             ActiveFiles.Remove(droppedPath);
                             Save();
                         }
-                        catch (Exception ex)
-                        {
-                            Console.WriteLine($"Failed to move file into folder: {ex}");
-                        }
                     }
-                    // else: same tab content area — cancel, item stays
+                    else
+                    {
+                        // Dropped within content area but not on a folder — reorder.
+                        int srcIdx = ActiveFiles.IndexOf(droppedPath);
+                        int dstSlot = GetInsertSlotAtPoint(clientPos);
+                        if (srcIdx >= 0 && dstSlot != srcIdx && dstSlot != srcIdx + 1)
+                        {
+                            ActiveFiles.RemoveAt(srcIdx);
+                            if (dstSlot > srcIdx) dstSlot--;
+                            if (dstSlot < 0) dstSlot = 0;
+                            if (dstSlot > ActiveFiles.Count) dstSlot = ActiveFiles.Count;
+                            ActiveFiles.Insert(dstSlot, droppedPath);
+                            Save();
+                        }
+                        // else: no net change — item stays put.
+                    }
                 }
                 else
                 {
@@ -548,10 +692,53 @@ namespace CarbonZones
                 // Capture lost unexpectedly (Alt+Tab, another app, etc.) — cancel drag
                 itemDragState = ItemDragState.None;
                 dragItemPath = null;
+                dragDropSlotIndex = -1;
+                dragTargetFolder = null;
                 Cursor = Cursors.Default;
                 Refresh();
             }
             base.OnMouseCaptureChanged(e);
+        }
+
+        /// <summary>
+        /// Moves a fence entry (file or folder) into the given target folder on disk.
+        /// Handles the case where either path is currently staged, and resolves name
+        /// collisions by appending " (2)", " (3)", etc.
+        /// </summary>
+        private bool TryMoveItemIntoFolder(string sourceKey, string targetFolderKey)
+        {
+            try
+            {
+                var src = FileStaging.GetEffectivePath(sourceKey);
+                var destFolder = FileStaging.GetEffectivePath(targetFolderKey);
+                if (!Directory.Exists(destFolder)) return false;
+
+                bool srcIsDir = Directory.Exists(src);
+                bool srcIsFile = File.Exists(src);
+                if (!srcIsDir && !srcIsFile) return false;
+
+                var baseName = Path.GetFileName(src.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+                var dest = Path.Combine(destFolder, baseName);
+
+                int n = 2;
+                while (File.Exists(dest) || Directory.Exists(dest))
+                {
+                    var stem = Path.GetFileNameWithoutExtension(baseName);
+                    var ext = Path.GetExtension(baseName);
+                    dest = Path.Combine(destFolder, $"{stem} ({n++}){ext}");
+                }
+
+                if (srcIsDir)
+                    Directory.Move(src, dest);
+                else
+                    File.Move(src, dest);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Failed to move item into folder: {ex}");
+                return false;
+            }
         }
 
         public void AcceptItem(string filePath)
@@ -780,15 +967,22 @@ namespace CarbonZones
             var x = itemPadding;
             var y = itemPadding;
             scrollHeight = 0;
+            itemLayoutRects.Clear();
             g.Clip = new Region(new Rectangle(0, headerHeight, Width, Height - headerHeight));
-            foreach (var file in ActiveFiles)
+            for (int idx = 0; idx < ActiveFiles.Count; idx++)
             {
+                var file = ActiveFiles[idx];
                 var effectivePath = FileStaging.GetEffectivePath(file);
                 var entry = FenceEntry.FromPath(effectivePath);
-                if (entry == null)
-                    continue;
 
-                RenderEntry(g, entry, file, x, y + headerHeight - scrollOffset);
+                // Always push a rect so itemLayoutRects indices stay aligned with ActiveFiles.
+                var cellTop = y + headerHeight - scrollOffset;
+                itemLayoutRects.Add(new Rectangle(x, cellTop, itemWidth, itemHeight));
+
+                if (entry != null)
+                {
+                    RenderEntry(g, entry, file, x, cellTop);
+                }
 
                 var itemBottom = y + itemHeight;
                 if (itemBottom > scrollHeight)
@@ -800,6 +994,12 @@ namespace CarbonZones
                     x = itemPadding;
                     y += itemHeight + itemPadding;
                 }
+            }
+
+            // Drop-slot indicator while dragging within the same tab.
+            if (itemDragState == ItemDragState.Dragging && dragDropSlotIndex >= 0 && dragTargetFolder == null)
+            {
+                DrawDropSlotIndicator(g, accent);
             }
 
             scrollHeight -= (ClientRectangle.Height - headerHeight);
@@ -826,6 +1026,55 @@ namespace CarbonZones
             shouldUpdateSelection = false;
             hasSelectionUpdated = false;
             hasHoverUpdated = false;
+        }
+
+        private void DrawDropSlotIndicator(Graphics g, Color accent)
+        {
+            // Derive the position of the insertion slot from the layout rects.
+            // If the slot index equals Count, draw after the last item (same row if space, else new row).
+            int slot = dragDropSlotIndex;
+            if (itemLayoutRects.Count == 0)
+                return;
+
+            Rectangle refRect;
+            bool drawBefore;
+            if (slot <= 0)
+            {
+                refRect = itemLayoutRects[0];
+                drawBefore = true;
+            }
+            else if (slot >= itemLayoutRects.Count)
+            {
+                refRect = itemLayoutRects[itemLayoutRects.Count - 1];
+                drawBefore = false;
+            }
+            else
+            {
+                // Prefer the right edge of slot-1 when it's on the same row as slot,
+                // otherwise draw on the left edge of slot (to indicate wrap).
+                var prev = itemLayoutRects[slot - 1];
+                var next = itemLayoutRects[slot];
+                if (prev.Y == next.Y)
+                {
+                    refRect = prev;
+                    drawBefore = false;
+                }
+                else
+                {
+                    refRect = next;
+                    drawBefore = true;
+                }
+            }
+
+            int lineX = drawBefore ? refRect.Left - itemPadding / 2 : refRect.Right + itemPadding / 2;
+            int top = refRect.Top - 2;
+            int bottom = refRect.Bottom + 2;
+
+            using var pen = new Pen(Color.FromArgb(220, accent.R, accent.G, accent.B), 2f);
+            g.DrawLine(pen, lineX, top, lineX, bottom);
+            // Small end caps to make the indicator more visible.
+            g.DrawLine(pen, lineX - 3, top, lineX + 3, top);
+            g.DrawLine(pen, lineX - 3, bottom, lineX + 3, bottom);
         }
 
         private void RenderEntry(Graphics g, FenceEntry entry, string originalPath, int x, int y)
@@ -885,6 +1134,21 @@ namespace CarbonZones
                 using var fillBrush = new SolidBrush(Color.FromArgb(80, SystemColors.ActiveCaption));
                 g.DrawRectangle(borderPen, outlineRectInner);
                 g.FillRectangle(fillBrush, outlineRect);
+            }
+
+            // Folder drop target highlight — drawn during an internal item drag when
+            // the cursor sits on a folder entry other than the dragged item.
+            if (dragTargetFolder != null && originalPath == dragTargetFolder &&
+                itemDragState == ItemDragState.Dragging)
+            {
+                var tabForAccent = fenceInfo.Tabs[activeTabIndex];
+                var accent = tabForAccent.AccentColor != 0
+                    ? Color.FromArgb(tabForAccent.AccentColor)
+                    : Color.FromArgb(fenceInfo.AccentColor);
+                using var dropFill = new SolidBrush(Color.FromArgb(80, accent.R, accent.G, accent.B));
+                using var dropBorder = new Pen(Color.FromArgb(220, accent.R, accent.G, accent.B), 2f);
+                g.FillRectangle(dropFill, outlineRect);
+                g.DrawRectangle(dropBorder, outlineRectInner);
             }
 
             int iconX = x + itemWidth / 2 - iconDrawSize / 2;
