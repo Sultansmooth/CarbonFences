@@ -61,6 +61,10 @@ namespace CarbonZones
         // Captured during Paint so hit-testing uses the exact rendered layout.
         private readonly List<Rectangle> itemLayoutRects = new List<Rectangle>();
 
+        // Throttled-invalidate state — avoids repainting on every mouse pixel.
+        private string lastHoveredItemForInvalidate;
+        private int lastHoveredTabForInvalidate = -2;
+
         // Tab state
         private int activeTabIndex = 0;
         private int hoveringTabIndex = -1;
@@ -516,13 +520,41 @@ namespace CarbonZones
             }
 
             // While dragging an item, compute live drop feedback (folder target or
-            // insertion slot) so the user can see where the drop will land.
+            // insertion slot). UpdateDragDropFeedback only invalidates on change.
             if (itemDragState == ItemDragState.Dragging && dragItemPath != null)
             {
                 UpdateDragDropFeedback(e.Location);
+                return;
             }
 
-            Invalidate();
+            // Throttled hover invalidation: a full repaint per mouse pixel (with
+            // shell icon extraction inside Paint) was the cause of "low-fps"
+            // chop. We hit-test against the last-painted layout and only ask
+            // for a redraw when the hovered item or tab actually changes.
+            string newHover = HitTestItem(e.Location);
+            int newTabHover = (e.Y >= titleHeight && e.Y < headerHeight)
+                ? GetTabIndexAtPoint(e.Location)
+                : -1;
+
+            if (newHover != lastHoveredItemForInvalidate || newTabHover != lastHoveredTabForInvalidate)
+            {
+                lastHoveredItemForInvalidate = newHover;
+                lastHoveredTabForInvalidate = newTabHover;
+                Invalidate();
+            }
+        }
+
+        private string HitTestItem(Point p)
+        {
+            // itemLayoutRects is populated during Paint; for indices in range,
+            // each entry corresponds 1:1 with ActiveFiles[i].
+            int n = Math.Min(itemLayoutRects.Count, ActiveFiles.Count);
+            for (int i = 0; i < n; i++)
+            {
+                if (itemLayoutRects[i].Contains(p))
+                    return ActiveFiles[i];
+            }
+            return null;
         }
 
         private void UpdateDragDropFeedback(Point clientPos)
@@ -1026,6 +1058,11 @@ namespace CarbonZones
             shouldUpdateSelection = false;
             hasSelectionUpdated = false;
             hasHoverUpdated = false;
+
+            // Sync throttled-invalidate state with what was just rendered, so
+            // MouseMove only triggers a repaint when the hover actually changes.
+            lastHoveredItemForInvalidate = hoveringItem;
+            lastHoveredTabForInvalidate = hoveringTabIndex;
         }
 
         private void DrawDropSlotIndicator(Graphics g, Color accent)

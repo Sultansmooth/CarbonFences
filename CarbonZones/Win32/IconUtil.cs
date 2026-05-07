@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Runtime.InteropServices;
 
@@ -9,9 +10,55 @@ namespace CarbonZones.Win32
         private static Icon folderIcon;
         private static Bitmap folderJumbo;
 
+        // Per-path cache for jumbo icons. The previous implementation extracted
+        // and allocated a fresh Bitmap on every Paint, which dragged framerate
+        // down to a crawl during hover/drag and leaked GDI bitmaps every frame.
+        // Cached bitmaps live for the app lifetime; size is small (~256KB each).
+        private static readonly Dictionary<string, Bitmap> jumboCache =
+            new Dictionary<string, Bitmap>(StringComparer.OrdinalIgnoreCase);
+        private static readonly object jumboCacheLock = new object();
+
         public static Icon FolderLarge => folderIcon ?? (folderIcon = GetStockIcon(SHSIID_FOLDER, SHGSI_LARGEICON));
 
         public static Bitmap GetJumboIcon(string path)
+        {
+            if (string.IsNullOrEmpty(path)) return null;
+
+            lock (jumboCacheLock)
+            {
+                if (jumboCache.TryGetValue(path, out var cached))
+                    return cached;
+            }
+
+            Bitmap fresh = ExtractJumboIcon(path);
+            if (fresh == null) return null;
+
+            lock (jumboCacheLock)
+            {
+                if (jumboCache.TryGetValue(path, out var existing))
+                {
+                    fresh.Dispose();
+                    return existing;
+                }
+                jumboCache[path] = fresh;
+                return fresh;
+            }
+        }
+
+        public static void InvalidateJumboCache(string path)
+        {
+            if (string.IsNullOrEmpty(path)) return;
+            lock (jumboCacheLock)
+            {
+                if (jumboCache.TryGetValue(path, out var bmp))
+                {
+                    jumboCache.Remove(path);
+                    try { bmp.Dispose(); } catch { }
+                }
+            }
+        }
+
+        private static Bitmap ExtractJumboIcon(string path)
         {
             try
             {
