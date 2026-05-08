@@ -55,14 +55,9 @@ namespace CarbonZones.Util
             using var accentPen = new Pen(Color.FromArgb(140, accent.R, accent.G, accent.B), 1f);
             g.DrawPath(accentPen, path);
 
-            // Apply the rounded region to the window itself so the corners
-            // don't show the underlying rectangular OS frame.
-            try
-            {
-                using var regionPath = BuildRoundedPath(new Rectangle(0, 0, e.ToolStrip.Width, e.ToolStrip.Height), CornerRadius);
-                e.ToolStrip.Region = new Region(regionPath);
-            }
-            catch { }
+            // Note: rounded Region is applied once in MenuOutsideClickWatcher
+            // on Opened — applying it inside paint caused a Region->Paint
+            // storm that intermittently broke hover state rendering.
         }
 
         protected override void OnRenderMenuItemBackground(ToolStripItemRenderEventArgs e)

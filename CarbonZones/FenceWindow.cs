@@ -142,6 +142,10 @@ namespace CarbonZones
             tabContextMenu.Padding = new Padding(4);
             appContextMenu.DropShadowEnabled = true;
             tabContextMenu.DropShadowEnabled = true;
+            // Rounded region + outside-click hook (handles desktop and other-app
+            // clicks that the form's WndProc never sees).
+            MenuOutsideClickWatcher.Attach(appContextMenu);
+            MenuOutsideClickWatcher.Attach(tabContextMenu);
 
             this.MouseWheel += FenceWindow_MouseWheel;
             this.MouseDown += FenceWindow_MouseDown;
