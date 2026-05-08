@@ -203,13 +203,20 @@ namespace CarbonZones
                 return;
             }
 
-            // Dismiss open context menus on any mouse click (needed because
-            // ShowWithoutActivation / MA_NOACTIVATE prevents normal auto-close)
+            // Dismiss open context menus on mouse click OUTSIDE the menu bounds.
+            // Because ShowWithoutActivation / MA_NOACTIVATE prevents normal
+            // auto-close, we have to handle dismiss manually — but the previous
+            // version closed unconditionally, which also killed clicks landing
+            // on a menu item before the item's MouseUp could fire (so e.g. the
+            // tab "Rename Tab" menu item appeared dead).
             if (m.Msg == WM_LBUTTONDOWN || m.Msg == WM_RBUTTONDOWN
                 || m.Msg == WM_NCLBUTTONDOWN)
             {
-                if (appContextMenu.Visible) appContextMenu.Close();
-                if (tabContextMenu.Visible) tabContextMenu.Close();
+                var screenPos = Cursor.Position;
+                if (appContextMenu.Visible && !appContextMenu.Bounds.Contains(screenPos))
+                    appContextMenu.Close();
+                if (tabContextMenu.Visible && !tabContextMenu.Bounds.Contains(screenPos))
+                    tabContextMenu.Close();
             }
 
             // Right-click context menu — handle directly for reliability
