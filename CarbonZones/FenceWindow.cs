@@ -117,6 +117,32 @@ namespace CarbonZones
             tabContextMenu.Items.Add("Tab Appearance...", null, TabAppearance_Click);
             tabContextMenu.Items.Add("Delete Tab", null, TabDelete_Click);
 
+            // Style both right-click menus to match the dark/translucent fence
+            // aesthetic. Renderer reads accent dynamically so Appearance changes
+            // take effect on the next open without rebuilding the menu.
+            var menuRenderer = new ZoneMenuRenderer(() =>
+            {
+                var tabIdx = (contextMenuTabIndex >= 0 && contextMenuTabIndex < this.fenceInfo.Tabs.Count)
+                    ? contextMenuTabIndex
+                    : activeTabIndex;
+                if (tabIdx >= 0 && tabIdx < this.fenceInfo.Tabs.Count)
+                {
+                    var tab = this.fenceInfo.Tabs[tabIdx];
+                    if (tab.AccentColor != 0) return Color.FromArgb(tab.AccentColor);
+                }
+                return Color.FromArgb(this.fenceInfo.AccentColor);
+            });
+            appContextMenu.Renderer = menuRenderer;
+            tabContextMenu.Renderer = menuRenderer;
+            appContextMenu.BackColor = Color.FromArgb(28, 28, 34);
+            tabContextMenu.BackColor = Color.FromArgb(28, 28, 34);
+            appContextMenu.ForeColor = Color.FromArgb(245, 245, 247);
+            tabContextMenu.ForeColor = Color.FromArgb(245, 245, 247);
+            appContextMenu.Padding = new Padding(4);
+            tabContextMenu.Padding = new Padding(4);
+            appContextMenu.DropShadowEnabled = true;
+            tabContextMenu.DropShadowEnabled = true;
+
             this.MouseWheel += FenceWindow_MouseWheel;
             this.MouseDown += FenceWindow_MouseDown;
             this.MouseUp += FenceWindow_MouseUp;
