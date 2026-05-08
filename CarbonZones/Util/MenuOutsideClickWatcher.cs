@@ -23,6 +23,18 @@ namespace CarbonZones.Util
     {
         public static void Attach(ToolStripDropDown menu, int cornerRadius = 8)
         {
+            // Force a repaint on hover-in/out for each item. Belt-and-suspenders
+            // against the intermittent "hover not rendered" symptom that comes
+            // from the menu's input loop being starved when its owner form is
+            // non-activating.
+            void WireItemHover(ToolStripItem item)
+            {
+                item.MouseEnter += (s, e) => { try { menu.Invalidate(item.Bounds); } catch { } };
+                item.MouseLeave += (s, e) => { try { menu.Invalidate(item.Bounds); } catch { } };
+            }
+            foreach (ToolStripItem item in menu.Items) WireItemHover(item);
+            menu.ItemAdded += (s, e) => WireItemHover(e.Item);
+
             IntPtr hookHandle = IntPtr.Zero;
             // Captured by both lambdas below — must remain rooted while the
             // hook is installed, otherwise the GC will collect the delegate

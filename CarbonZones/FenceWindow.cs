@@ -256,14 +256,17 @@ namespace CarbonZones
                     (short)(m.LParam.ToInt64() & 0xFFFF),
                     (short)(m.LParam.ToInt64() >> 16 & 0xFFFF));
 
-                // Right-click on tab bar
+                // Right-click on tab bar. Use the screen-coord overload (no
+                // parent control) so the popup isn't coupled to the non-
+                // activating fence form -- coupling caused intermittent hover
+                // state when right-clicking from a different fence/zone.
                 if (pt.Y >= titleHeight && pt.Y < headerHeight)
                 {
                     int tabIdx = GetTabIndexAtPoint(pt);
                     if (tabIdx >= 0)
                     {
                         contextMenuTabIndex = tabIdx;
-                        tabContextMenu.Show(this, pt);
+                        tabContextMenu.Show(PointToScreen(pt));
                     }
                     return;
                 }
@@ -272,7 +275,7 @@ namespace CarbonZones
                 if (hoveringItem != null && !ModifierKeys.HasFlag(Keys.Shift))
                     ShowShellContextMenuSafe(hoveringItem, PointToScreen(pt));
                 else
-                    appContextMenu.Show(this, pt);
+                    appContextMenu.Show(PointToScreen(pt));
                 return;
             }
 
